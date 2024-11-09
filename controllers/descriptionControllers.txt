@@ -1,0 +1,4 @@
+En esta etapa vamos a tener la implementacion de cada uno de los servicios
+-Manejo de request, response y la logica del negocio
+-Esta se comunica con la capa de repositorios (models)
+-En el caso de que necesitemos hacer consultas a la BDD, tenemos que utilizar los models

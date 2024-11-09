@@ -1,0 +1,14 @@
+En esta carpeta o capa, debemos definir los middlewars que vamos a usar en el proyecto
+- **auth**: Middlewares relacionados con la autenticación de usuarios (JWT, Brearer Token y las validaciones)->el token te da la informacion del Usuario
+- **cors**: Middlewares relacionados con la configuración de CORS (Cross-Origin Resource Sharing)
+- **error**: Middlewares relacionados con la gestión de errores
+- **logger**: Middlewares relacionados con la configuración del logger
+- **rateLimit**: Middlewares relacionados con la configuración de límites de velocidad de p
+- **session**: Middlewares relacionados con la configuración de sesiones
+- **validator**: Middlewares relacionados con la validación de datos
+- **autorization**: 1. Resolver en un solo middlewar todas las condiciones, esta es que el servicio este disponible solo para admin, ademas para poder modificar un departamento puede ser admin o owner cualquiera de los dos pueden editar, para hacer esta validacion necesitamos saber el usuario que esta haciendo el request, esto se obtiene con el middlewar de autenticación. luego debemos comparar esos id, en el caso de que haga match, debemos dejarle continuar o mandarle un 403, 
+
+//Nota Si se necesita hacer una consulta a base de datos, en el middlewar pueden llamar a los modelos 
+2 opciones para resolver 
+Implementar todo dentro del mismo middlewar de autorization
+o implementar en middlewars separados, middleware validacion de admin otro para duenio cuenta, y otro duenio departamento.

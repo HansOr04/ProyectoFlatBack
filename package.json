@@ -1,0 +1,10 @@
+{
+  "name": "Estructura",
+  "version": "0.1.0",
+  "main": "index.js",
+  "author": "HansOr04 <hansalazar04@gmail.com>",
+  "license": "MIT",
+  "dependencies": {
+    "Estructura": "file:"
+  }
+}

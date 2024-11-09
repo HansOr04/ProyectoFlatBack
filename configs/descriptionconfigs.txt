@@ -1,0 +1,8 @@
+Podemos tener un archivo de configuraciones para vargar las variables de ambiente
+- En estas variables deben definir los parametros de conexion a la BDD
+- Username como variable de ambiente
+- Password como variable de ambiente
+- Host como variable de ambiente
+- Database como variable de ambiente
+Utilizar estos parametros como template string
+Cualquier variable sensible deberia estar aqui

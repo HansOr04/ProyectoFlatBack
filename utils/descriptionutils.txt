@@ -1,0 +1,3 @@
+Cualquier funcion o metodo que sea externo a los recursos que tenemos 
+-Envio de correos
+-Loggers 

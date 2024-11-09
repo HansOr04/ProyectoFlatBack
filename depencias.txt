@@ -1,0 +1,8 @@
+Listado de dependencias
+#=====================================#
+- Express
+- Mongoose
+- cors
+- bcrypt
+- jsonwebtoken
+- dotenv(en lugar de usar dotenv, pueden trabajar con variables de ambiente nativas de NODE, donde ya no es necesario dependencias) (variables de ambiente)
