@@ -8,11 +8,18 @@
 import express from "express";
 import { connectDB } from "./db/db.js";
 import configs from "./configs/configs.js";
-
+//1.0- Importar Route usuarios
+//2.0- Importar Route flats
+import flatRoute from "./routes/flat.router.js";
+//3.0- Importar Route messages
 const app = express();
 app.use(express.json());
 
 connectDB();
+//1.1- Rutas de usuarios
+//1.2- Rutas de flats
+app.use("/flats", flatRoute);
+//1.3- Rutas de messages
 app.listen(configs.PORT, () => {
     console.log(`Server running on port ${configs.PORT}`);
 });

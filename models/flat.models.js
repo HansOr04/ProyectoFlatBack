@@ -18,11 +18,10 @@ const flatSchema = new mongoose.Schema({
     },
     owner: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
+        ref: "users",
         required: true
     },
 
 });
 
-const Flat = mongoose.model("Flat", flatSchema);
-export default Flat;
+export const Flat = mongoose.model("flats", flatSchema);

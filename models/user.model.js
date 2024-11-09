@@ -10,11 +10,10 @@ const userSchema = new mongoose.Schema({
     atCreated: { type: Date, default: Date.now },
     atUpdated: { type: Date, default: Date.now },
     //? Se define un atributo que  contenga los favoritos de los flats
-    favoriteFlats: [{ type: mongoose.Schema.Types.ObjectId, ref: "Flat" }], //! Cambiar el nombre de FLAT por si le pones otro nombre
+    favoriteFlats: [{ type: mongoose.Schema.Types.ObjectId, ref: "flats" }], //! Cambiar el nombre de FLAT por si le pones otro nombre
     //? El proyecto pide hacer un borrado fisico, pero mejor hacer un borrado logico
     atDeleted: { type: Date, default: null },
 
 });
 //! Definir el modelo de datos para la coleccion de usuarios
-const User = mongoose.model("User", userSchema);
-export default User;
+export const User = mongoose.model("users", userSchema);
