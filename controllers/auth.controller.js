@@ -132,7 +132,8 @@ const changePassword = async (req, res) => {
         }
 
         // Actualizar contraseña
-        await user.updatePassword(newPassword);
+        user.password = newPassword; // Esto debería activar el middleware de hash
+        await user.save();
 
         res.status(200).json({
             success: true,
