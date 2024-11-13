@@ -44,14 +44,6 @@ userSchema.methods.comparePassword = async function(candidatePassword) {
 };
 
 // Método para actualizar la contraseña
-userSchema.methods.updatePassword = async function(newPassword) {
-    try {
-        const salt = await bcrypt.genSalt(10);
-        this.password = await bcrypt.hash(newPassword, salt);
-        await this.save();
-    } catch (error) {
-        throw error;
-    }
-};
+
 
 export const User = mongoose.model("users", userSchema);
