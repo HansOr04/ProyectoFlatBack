@@ -1,14 +1,3 @@
-//? Implementar los metodos para la funcionalidad del http request de getUsers, getUserById, createUser, updateUser, deleteUser
-//! Buenas practicas a tomar en cuenta: 
-//! Siempre usar el try-catch para controlar los errores
-//! Siempre retornar un objeto con status code y message
-//* 200 -> OK
-//* 201 -> Created
-//* 204 -> No Content
-//* 400 -> Bad Request
-//* 404 -> Not Found
-//* 500 -> Internal Server Error
-//? Si se animan a usar loggers siempre registrar un evento de error cada vez que ingresen al catch
 import { User } from "../models/user.model.js";
 
 const getUsers = async (req, res) => {
@@ -87,9 +76,13 @@ const updateUser = async (req, res) => {
             });
         }
 
+        // Solo permitir actualización de isAdmin si el usuario que hace la petición es admin
+        if (!req.user.isAdmin) {
+            delete updateData.isAdmin;
+        }
+
         // No permitir actualización de campos sensibles
         delete updateData.password;
-        delete updateData.isAdmin;
 
         // Actualizar imagen de perfil si se proporcionó
         if (req.file) {
@@ -183,10 +176,98 @@ const getFavorites = async (req, res) => {
     }
 };
 
+// Nuevo método para añadir a favoritos
+const addToFavorites = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { flatId } = req.params;
+
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: "User not found"
+            });
+        }
+
+        // Verificar si el flat ya está en favoritos
+        if (user.favoriteFlats.includes(flatId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Flat already in favorites"
+            });
+        }
+
+        // Añadir a favoritos
+        user.favoriteFlats.push(flatId);
+        await user.save();
+
+        await user.populate('favoriteFlats');
+
+        res.status(200).json({
+            success: true,
+            message: "Flat added to favorites successfully",
+            data: user.favoriteFlats
+        });
+    } catch (error) {
+        res.status(400).json({
+            success: false,
+            message: "Error adding to favorites",
+            error: error.message
+        });
+    }
+};
+
+// Nuevo método para eliminar de favoritos
+const removeFromFavorites = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { flatId } = req.params;
+
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: "User not found"
+            });
+        }
+
+        // Verificar si el flat está en favoritos
+        if (!user.favoriteFlats.includes(flatId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Flat not in favorites"
+            });
+        }
+
+        // Eliminar de favoritos
+        user.favoriteFlats = user.favoriteFlats.filter(
+            id => id.toString() !== flatId
+        );
+        await user.save();
+
+        await user.populate('favoriteFlats');
+
+        res.status(200).json({
+            success: true,
+            message: "Flat removed from favorites successfully",
+            data: user.favoriteFlats
+        });
+    } catch (error) {
+        res.status(400).json({
+            success: false,
+            message: "Error removing from favorites",
+            error: error.message
+        });
+    }
+};
+
 export {
     getUsers,
     getUserById,
     updateUser,
     deleteUser,
-    getFavorites
+    getFavorites,
+    addToFavorites,
+    removeFromFavorites
 };
