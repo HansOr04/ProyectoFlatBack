@@ -3,7 +3,8 @@ import { Flat } from "../models/flat.models.js";
 
 const createMessage = async (req, res) => {
     try {
-        const { content, flatID } = req.body;
+        const { content } = req.body;
+        const { flatID } = req.params;  // Cambio: obtener flatID de los parámetros de URL
         const author = req.user.id;
 
         // Verificar si el flat existe

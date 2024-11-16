@@ -6,7 +6,7 @@ const flatSchema = new mongoose.Schema({
     streetNumber: { type: String, required: true },
     areaSize: { type: Number, required: true },
     hasAC: { type: Boolean, required: true },
-    yearBuililt: { type: Number, required: true },
+    yearBuilt: { type: Number, required: true },    // Corregido de yearBuililt a yearBuilt
     rentPrice: { type: Number, required: true },
     dateAvailable: { type: Date, required: true },
     // Array de imágenes del departamento

@@ -87,7 +87,6 @@ const validateLogin = (req, res, next) => {
         });
     }
 };
-
 const validateFlatCreation = (req, res, next) => {
     try {
         const {
@@ -109,35 +108,39 @@ const validateFlatCreation = (req, res, next) => {
             });
         }
 
-        // Validar formato de datos
-        if (typeof areaSize !== 'number' || areaSize <= 0) {
+        // Convertir y validar areaSize
+        const areaSizeNum = Number(areaSize);
+        if (isNaN(areaSizeNum) || areaSizeNum <= 0) {
             return res.status(400).json({
                 success: false,
                 message: "Area size must be a positive number"
             });
         }
+        req.body.areaSize = areaSizeNum; // Actualizar el valor convertido
 
-        if (typeof hasAC !== 'boolean') {
-            return res.status(400).json({
-                success: false,
-                message: "hasAC must be a boolean"
-            });
-        }
+        // Convertir y validar hasAC
+        req.body.hasAC = String(hasAC).toLowerCase() === 'true';
 
+        // Convertir y validar yearBuilt
+        const yearBuiltNum = Number(yearBuilt);
         const currentYear = new Date().getFullYear();
-        if (typeof yearBuilt !== 'number' || yearBuilt < 1800 || yearBuilt > currentYear) {
+        if (isNaN(yearBuiltNum) || yearBuiltNum < 1800 || yearBuiltNum > currentYear) {
             return res.status(400).json({
                 success: false,
                 message: `Year built must be between 1800 and ${currentYear}`
             });
         }
+        req.body.yearBuilt = yearBuiltNum;
 
-        if (typeof rentPrice !== 'number' || rentPrice <= 0) {
+        // Convertir y validar rentPrice
+        const rentPriceNum = Number(rentPrice);
+        if (isNaN(rentPriceNum) || rentPriceNum <= 0) {
             return res.status(400).json({
                 success: false,
                 message: "Rent price must be a positive number"
             });
         }
+        req.body.rentPrice = rentPriceNum;
 
         // Validar fecha disponible
         const availableDate = new Date(dateAvailable);
@@ -147,6 +150,7 @@ const validateFlatCreation = (req, res, next) => {
                 message: "Invalid date available format"
             });
         }
+        req.body.dateAvailable = availableDate;
 
         next();
     } catch (error) {
