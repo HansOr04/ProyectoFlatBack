@@ -1,4 +1,4 @@
-import Message from "../models/message.model.js";
+import {Message} from "../models/message.model.js";
 import { Flat } from "../models/flat.models.js";
 import { deleteFromCloudinary } from "../configs/cloudinary.config.js";
 

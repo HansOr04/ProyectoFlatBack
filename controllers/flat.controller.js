@@ -1,5 +1,6 @@
 import { Flat } from "../models/flat.models.js";
-import Message from "../models/message.model.js";
+import {Message} from "../models/message.model.js";
+import { User } from "../models/user.model.js"; // Añadido para toggleFavorite
 import { deleteFromCloudinary } from "../configs/cloudinary.config.js";
 
 // Crear un departamento
@@ -17,10 +18,10 @@ const createFlat = async (req, res) => {
 
         // Procesar las imágenes
         let images = req.files.map((file, index) => ({
-            url: file.path, // Cloudinary devuelve la URL en file.path
-            public_id: file.filename, // Cloudinary devuelve el public_id en file.filename
+            url: file.path,
+            public_id: file.filename,
             description: file.originalname,
-            isMainImage: index === 0 // Primera imagen será la principal
+            isMainImage: index === 0
         }));
 
         // Crear el objeto de datos del departamento
@@ -39,17 +40,19 @@ const createFlat = async (req, res) => {
         const flat = new Flat(flatData);
         await flat.save();
 
+        // Poblar el owner antes de enviar la respuesta
+        await flat.populate('owner', 'firstName lastName email');
+
         res.status(201).json({
             success: true,
             message: "Flat created successfully",
             data: flat
         });
     } catch (error) {
-        // Si hay error, eliminar las imágenes subidas
         if (req.files) {
             for (const file of req.files) {
                 try {
-                    await deleteFromCloudinary(file.filename); // Usar filename como public_id
+                    await deleteFromCloudinary(file.filename);
                 } catch (deleteError) {
                     console.error('Error deleting file:', deleteError);
                 }
@@ -80,21 +83,22 @@ const getFlats = async (req, res) => {
 
         const filters = {};
         if (city) filters.city = new RegExp(city, 'i');
-        if (minPrice) filters.rentPrice = { $gte: minPrice };
-        if (maxPrice) filters.rentPrice = { ...filters.rentPrice, $lte: maxPrice };
-        if (hasAC !== undefined) filters.hasAC = hasAC;
-        if (minArea) filters.areaSize = { $gte: minArea };
+        if (minPrice) filters.rentPrice = { $gte: Number(minPrice) };
+        if (maxPrice) filters.rentPrice = { ...filters.rentPrice, $lte: Number(maxPrice) };
+        if (hasAC !== undefined) filters.hasAC = hasAC === 'true';
+        if (minArea) filters.areaSize = { $gte: Number(minArea) };
         if (available === 'true') filters.dateAvailable = { $lte: new Date() };
 
         const skip = (page - 1) * limit;
 
-        const flats = await Flat.find(filters)
-            .populate('owner', 'firstName lastName email')
-            .skip(skip)
-            .limit(parseInt(limit))
-            .sort({ atCreated: -1 });
-
-        const total = await Flat.countDocuments(filters);
+        const [flats, total] = await Promise.all([
+            Flat.find(filters)
+                .populate('owner', 'firstName lastName email')
+                .skip(skip)
+                .limit(parseInt(limit))
+                .sort({ atCreated: -1 }),
+            Flat.countDocuments(filters)
+        ]);
 
         res.status(200).json({
             success: true,
@@ -118,15 +122,13 @@ const getFlats = async (req, res) => {
 // Obtener un departamento por ID
 const getFlatById = async (req, res) => {
     try {
-        const flat = await Flat.findById(req.params.id)
-            .populate('owner', 'firstName lastName email')
-            .populate({
-                path: 'comments',
-                populate: {
-                    path: 'author',
-                    select: 'firstName lastName profileImage'
-                }
-            });
+        const [flat, messages] = await Promise.all([
+            Flat.findById(req.params.id)
+                .populate('owner', 'firstName lastName email'),
+            Message.find({ flatID: req.params.id })
+                .populate('author', 'firstName lastName profileImage')
+                .sort({ atCreated: -1 })
+        ]);
 
         if (!flat) {
             return res.status(404).json({
@@ -137,7 +139,10 @@ const getFlatById = async (req, res) => {
 
         res.status(200).json({
             success: true,
-            data: flat
+            data: {
+                ...flat.toObject(),
+                messages
+            }
         });
     } catch (error) {
         res.status(400).json({
@@ -156,7 +161,7 @@ const updateFlat = async (req, res) => {
         if (!flat) {
             if (req.files) {
                 await Promise.all(
-                    req.files.map(file => deleteFromCloudinary(file.cloudinary.public_id))
+                    req.files.map(file => deleteFromCloudinary(file.filename))
                 );
             }
             return res.status(404).json({
@@ -168,7 +173,7 @@ const updateFlat = async (req, res) => {
         if (flat.owner.toString() !== req.user.id && !req.user.isAdmin) {
             if (req.files) {
                 await Promise.all(
-                    req.files.map(file => deleteFromCloudinary(file.cloudinary.public_id))
+                    req.files.map(file => deleteFromCloudinary(file.filename))
                 );
             }
             return res.status(403).json({
@@ -177,33 +182,37 @@ const updateFlat = async (req, res) => {
             });
         }
 
+        // Actualizar valores numéricos si se proporcionan
+        if (req.body.areaSize) req.body.areaSize = Number(req.body.areaSize);
+        if (req.body.rentPrice) req.body.rentPrice = Number(req.body.rentPrice);
+        if (req.body.yearBuilt) req.body.yearBuilt = Number(req.body.yearBuilt);
+        if (req.body.hasAC !== undefined) req.body.hasAC = req.body.hasAC === 'true';
+
         if (req.files && req.files.length > 0) {
             const newImages = req.files.map(file => ({
-                url: file.cloudinary.url,
-                public_id: file.cloudinary.public_id,
+                url: file.path,
+                public_id: file.filename,
                 description: file.originalname
             }));
-            req.body.images = [...flat.images, ...newImages];
+            flat.images.push(...newImages);
         }
 
-        const updatedFlat = await Flat.findByIdAndUpdate(
-            req.params.id,
-            { 
-                ...req.body,
-                atUpdated: Date.now()
-            },
-            { new: true }
-        );
+        // Actualizar otros campos
+        Object.assign(flat, req.body);
+        flat.atUpdated = Date.now();
+
+        await flat.save();
+        await flat.populate('owner', 'firstName lastName email');
 
         res.status(200).json({
             success: true,
             message: "Flat updated successfully",
-            data: updatedFlat
+            data: flat
         });
     } catch (error) {
         if (req.files) {
             await Promise.all(
-                req.files.map(file => deleteFromCloudinary(file.cloudinary.public_id))
+                req.files.map(file => deleteFromCloudinary(file.filename))
             );
         }
         res.status(400).json({
@@ -213,6 +222,9 @@ const updateFlat = async (req, res) => {
         });
     }
 };
+
+
+
 
 // Borrar un departamento
 const deleteFlat = async (req, res) => {

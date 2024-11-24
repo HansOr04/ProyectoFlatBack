@@ -123,5 +123,4 @@ messageSchema.virtual('attachmentUrl').get(function() {
     return this.attachment && this.attachment.url ? this.attachment.url : null;
 });
 
-const Message = mongoose.model("Message", messageSchema);
-export default Message;
+export const Message = mongoose.model("Message", messageSchema);

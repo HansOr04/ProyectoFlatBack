@@ -9,10 +9,9 @@ const flatSchema = new mongoose.Schema({
     yearBuilt: { type: Number, required: true },
     rentPrice: { type: Number, required: true },
     dateAvailable: { type: Date, required: true },
-    // Array de imágenes actualizado para Cloudinary
     images: [{
         url: { type: String, required: true },
-        public_id: { type: String, required: true }, // ID de Cloudinary
+        public_id: { type: String, required: true },
         description: { type: String },
         isMainImage: { type: Boolean, default: false },
         uploadDate: { type: Date, default: Date.now }
@@ -29,23 +28,32 @@ const flatSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: "users",
         required: true
-    },
+    }
+}, {
+    // Habilitar virtuals
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true }
 });
 
 // Middleware para asegurar que solo una imagen sea la principal
 flatSchema.pre('save', function(next) {
     const mainImages = this.images.filter(img => img.isMainImage);
     if (mainImages.length > 1) {
-        // Si hay más de una imagen principal, mantener solo la primera
         for (let i = 1; i < mainImages.length; i++) {
             this.images[this.images.indexOf(mainImages[i])].isMainImage = false;
         }
     }
-    // Si no hay imagen principal y hay imágenes, establecer la primera como principal
     if (mainImages.length === 0 && this.images.length > 0) {
         this.images[0].isMainImage = true;
     }
     next();
+});
+
+// Virtual para obtener los mensajes asociados
+flatSchema.virtual('messages', {
+    ref: 'Message',
+    localField: '_id',
+    foreignField: 'flatID'
 });
 
 // Método para establecer una imagen como principal
@@ -64,8 +72,6 @@ flatSchema.methods.removeImage = async function(imageId) {
         throw new Error('Image not found');
     }
 
-    // Si la imagen a eliminar es la principal y hay otras imágenes,
-    // establecer la siguiente como principal
     if (imageToRemove.isMainImage && this.images.length > 1) {
         const nextImage = this.images.find(img => !img._id.equals(imageId));
         if (nextImage) {
@@ -79,7 +85,6 @@ flatSchema.methods.removeImage = async function(imageId) {
 
 // Método para añadir una imagen
 flatSchema.methods.addImage = function(imageData) {
-    // Si es la primera imagen, establecerla como principal
     if (this.images.length === 0) {
         imageData.isMainImage = true;
     }
@@ -91,5 +96,12 @@ flatSchema.methods.addImage = function(imageData) {
 flatSchema.virtual('mainImage').get(function() {
     return this.images.find(img => img.isMainImage) || this.images[0];
 });
+
+// Índices para mejorar el rendimiento
+flatSchema.index({ city: 1 });
+flatSchema.index({ rentPrice: 1 });
+flatSchema.index({ dateAvailable: 1 });
+flatSchema.index({ owner: 1 });
+flatSchema.index({ atCreated: -1 });
 
 export const Flat = mongoose.model("flats", flatSchema);
