@@ -1,8 +1,8 @@
 import { User } from "../models/user.model.js";
+import { deleteFromCloudinary } from "../configs/cloudinary.config.js";
 
 const getUsers = async (req, res) => {
     try {
-        // Verificar si es admin
         if (!req.user.isAdmin) {
             return res.status(403).json({
                 success: false,
@@ -31,7 +31,6 @@ const getUserById = async (req, res) => {
     try {
         const { id } = req.params;
         
-        // Verificar autorización
         if (id !== req.user.id && !req.user.isAdmin) {
             return res.status(403).json({
                 success: false,
@@ -70,9 +69,23 @@ const updateUser = async (req, res) => {
 
         // Verificar autorización
         if (id !== req.user.id && !req.user.isAdmin) {
+            if (req.file) {
+                await deleteFromCloudinary(req.file.cloudinary.public_id);
+            }
             return res.status(403).json({
                 success: false,
                 message: "Not authorized"
+            });
+        }
+
+        const existingUser = await User.findById(id);
+        if (!existingUser) {
+            if (req.file) {
+                await deleteFromCloudinary(req.file.cloudinary.public_id);
+            }
+            return res.status(404).json({
+                success: false,
+                message: "User not found"
             });
         }
 
@@ -86,7 +99,13 @@ const updateUser = async (req, res) => {
 
         // Actualizar imagen de perfil si se proporcionó
         if (req.file) {
-            updateData.profileImage = req.file.path;
+            // Eliminar imagen anterior de Cloudinary si existe
+            if (existingUser.profileImageId && 
+                existingUser.profileImageId !== "uploads/profiles/default/default-profile") {
+                await deleteFromCloudinary(existingUser.profileImageId);
+            }
+            updateData.profileImage = req.file.cloudinary.url;
+            updateData.profileImageId = req.file.cloudinary.public_id;
         }
 
         const user = await User.findByIdAndUpdate(
@@ -98,19 +117,15 @@ const updateUser = async (req, res) => {
             { new: true }
         ).select('-password');
 
-        if (!user) {
-            return res.status(404).json({
-                success: false,
-                message: "User not found"
-            });
-        }
-
         res.status(200).json({
             success: true,
             message: "User updated successfully",
             data: user
         });
     } catch (error) {
+        if (req.file) {
+            await deleteFromCloudinary(req.file.cloudinary.public_id);
+        }
         res.status(400).json({
             success: false,
             message: "Error updating user",
@@ -123,7 +138,6 @@ const deleteUser = async (req, res) => {
     try {
         const { id } = req.params;
 
-        // Verificar autorización
         if (id !== req.user.id && !req.user.isAdmin) {
             return res.status(403).json({
                 success: false,
@@ -139,8 +153,16 @@ const deleteUser = async (req, res) => {
             });
         }
 
+        // Eliminar imagen de perfil si existe y no es la imagen por defecto
+        if (user.profileImageId && 
+            user.profileImageId !== "uploads/profiles/default/default-profile") {
+            await deleteFromCloudinary(user.profileImageId);
+        }
+
         // Realizar borrado lógico
         user.atDeleted = new Date();
+        user.profileImage = "https://res.cloudinary.com/dzerzykxk/image/upload/v1/uploads/profiles/default/default-profile.jpg";
+        user.profileImageId = "uploads/profiles/default/default-profile";
         await user.save();
 
         res.status(200).json({
@@ -156,13 +178,11 @@ const deleteUser = async (req, res) => {
     }
 };
 
+// Las funciones de favoritos se mantienen igual ya que no manejan archivos
 const getFavorites = async (req, res) => {
     try {
         const userId = req.user.id;
-
-        const user = await User.findById(userId)
-            .populate('favoriteFlats');
-
+        const user = await User.findById(userId).populate('favoriteFlats');
         res.status(200).json({
             success: true,
             data: user.favoriteFlats
@@ -176,7 +196,6 @@ const getFavorites = async (req, res) => {
     }
 };
 
-// Nuevo método para añadir a favoritos
 const addToFavorites = async (req, res) => {
     try {
         const userId = req.user.id;
@@ -190,7 +209,6 @@ const addToFavorites = async (req, res) => {
             });
         }
 
-        // Verificar si el flat ya está en favoritos
         if (user.favoriteFlats.includes(flatId)) {
             return res.status(400).json({
                 success: false,
@@ -198,10 +216,8 @@ const addToFavorites = async (req, res) => {
             });
         }
 
-        // Añadir a favoritos
         user.favoriteFlats.push(flatId);
         await user.save();
-
         await user.populate('favoriteFlats');
 
         res.status(200).json({
@@ -218,7 +234,6 @@ const addToFavorites = async (req, res) => {
     }
 };
 
-// Nuevo método para eliminar de favoritos
 const removeFromFavorites = async (req, res) => {
     try {
         const userId = req.user.id;
@@ -232,7 +247,6 @@ const removeFromFavorites = async (req, res) => {
             });
         }
 
-        // Verificar si el flat está en favoritos
         if (!user.favoriteFlats.includes(flatId)) {
             return res.status(400).json({
                 success: false,
@@ -240,12 +254,10 @@ const removeFromFavorites = async (req, res) => {
             });
         }
 
-        // Eliminar de favoritos
         user.favoriteFlats = user.favoriteFlats.filter(
             id => id.toString() !== flatId
         );
         await user.save();
-
         await user.populate('favoriteFlats');
 
         res.status(200).json({

@@ -8,10 +8,14 @@ const userSchema = new mongoose.Schema({
     lastName: { type: String, required: true },
     birthDate: { type: Date, required: true },
     isAdmin: { type: Boolean, default: false },
-    // Campo para la imagen de perfil
+    // Campo actualizado para la imagen de perfil con Cloudinary
     profileImage: { 
         type: String, 
-        default: "default-profile.jpg" // Imagen por defecto
+        default: "https://res.cloudinary.com/dzerzykxk/image/upload/v1/uploads/profiles/default/default-profile.jpg"
+    },
+    profileImageId: {
+        type: String,
+        default: "uploads/profiles/default/default-profile"
     },
     atCreated: { type: Date, default: Date.now },
     atUpdated: { type: Date, default: Date.now },
@@ -21,11 +25,9 @@ const userSchema = new mongoose.Schema({
 
 // Middleware para hashear la contraseña antes de guardar
 userSchema.pre('save', async function(next) {
-    // Solo hashear la contraseña si ha sido modificada o es nueva
     if (!this.isModified('password')) return next();
     
     try {
-        // Generar un salt y hashear la contraseña
         const salt = await bcrypt.genSalt(10);
         this.password = await bcrypt.hash(this.password, salt);
         next();
@@ -43,7 +45,53 @@ userSchema.methods.comparePassword = async function(candidatePassword) {
     }
 };
 
-// Método para actualizar la contraseña
+// Método para actualizar la imagen de perfil
+userSchema.methods.updateProfileImage = async function(imageData) {
+    if (!imageData) throw new Error('Image data is required');
 
+    this.profileImage = imageData.url;
+    this.profileImageId = imageData.public_id;
+    this.atUpdated = new Date();
+    
+    return this.save();
+};
+
+// Método para restaurar la imagen de perfil por defecto
+userSchema.methods.resetProfileImage = async function() {
+    this.profileImage = "https://res.cloudinary.com/dzerzykxk/image/upload/v1/uploads/profiles/default/default-profile.jpg";
+    this.profileImageId = "uploads/profiles/default/default-profile";
+    this.atUpdated = new Date();
+    
+    return this.save();
+};
+
+// Método para actualizar la contraseña
+userSchema.methods.updatePassword = async function(newPassword) {
+    this.password = newPassword;
+    this.atUpdated = new Date();
+    return this.save();
+};
+
+// Virtual para obtener el nombre completo
+userSchema.virtual('fullName').get(function() {
+    return `${this.firstName} ${this.lastName}`;
+});
+
+// Virtual para verificar si el usuario está activo
+userSchema.virtual('isActive').get(function() {
+    return this.atDeleted === null;
+});
+
+// Método para soft delete
+userSchema.methods.softDelete = async function() {
+    this.atDeleted = new Date();
+    // Restaurar imagen de perfil por defecto al eliminar
+    await this.resetProfileImage();
+    return this.save();
+};
+
+// Índices
+userSchema.index({ email: 1 });
+userSchema.index({ atDeleted: 1 });
 
 export const User = mongoose.model("users", userSchema);

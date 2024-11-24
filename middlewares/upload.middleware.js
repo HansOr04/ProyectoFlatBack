@@ -1,48 +1,41 @@
 import multer from 'multer';
 import path from 'path';
-import fs from 'fs';
+import { v2 as cloudinary } from 'cloudinary';
+import { CloudinaryStorage } from 'multer-storage-cloudinary';
 
-// Crear directorios necesarios si no existen
-const createUploadDirectories = () => {
-    const directories = [
-        './uploads',
-        './uploads/profiles',
-        './uploads/flats',
-        './uploads/messages'
-    ];
+// Configuración de Cloudinary
+cloudinary.config({
+    cloud_name: 'dzerzykxk',
+    api_key: '425821271237374',
+    api_secret: 'g34Np2Ey0zNXJHkmciHirA6Ei3Q'
+});
 
-    directories.forEach(dir => {
-        if (!fs.existsSync(dir)) {
-            fs.mkdirSync(dir, { recursive: true });
-        }
-    });
-};
-
-// Crear directorios al iniciar la aplicación
-createUploadDirectories();
-
-// Configuración de almacenamiento
-const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        let uploadPath = './uploads/';
-
-        switch (file.fieldname) {
-            case 'profileImage':
-                uploadPath += 'profiles/';
-                break;
-            case 'flatImages':
-                uploadPath += 'flats/';
-                break;
-            case 'messageAttachment':
-                uploadPath += 'messages/';
-                break;
-        }
-
-        cb(null, uploadPath);
-    },
-    filename: function (req, file, cb) {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+// Configuración del storage para Cloudinary
+const storage = new CloudinaryStorage({
+    cloudinary: cloudinary,
+    params: {
+        folder: (req, file) => {
+            // Determinar la carpeta según el tipo de archivo
+            if (file.fieldname === 'profileImage') return 'uploads/profiles';
+            if (file.fieldname === 'flatImages') return 'uploads/flats';
+            if (file.fieldname === 'messageAttachment') return 'uploads/messages';
+            return 'uploads/others';
+        },
+        format: async (req, file) => {
+            // Mantener el formato original o convertir a uno específico
+            if (file.mimetype.includes('jpeg') || file.mimetype.includes('jpg')) return 'jpg';
+            if (file.mimetype.includes('png')) return 'png';
+            return 'webp'; // formato por defecto
+        },
+        public_id: (req, file) => {
+            // Generar un ID único para el archivo
+            const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+            return `${file.fieldname}-${uniqueSuffix}`;
+        },
+        transformation: [
+            { width: 1000, crop: "limit" }, // limitar el tamaño máximo
+            { quality: "auto" } // optimizar calidad
+        ]
     }
 });
 
@@ -57,7 +50,7 @@ const fileFilter = (req, file, cb) => {
     }
 };
 
-// Configuración principal de multer
+// Configuración de multer
 const upload = multer({
     storage: storage,
     fileFilter: fileFilter,
@@ -65,6 +58,64 @@ const upload = multer({
         fileSize: 5 * 1024 * 1024, // 5MB
     }
 });
+
+// Función para eliminar archivo de Cloudinary
+const deleteFromCloudinary = async (publicId) => {
+    try {
+        await cloudinary.uploader.destroy(publicId);
+    } catch (error) {
+        console.error('Error deleting file from Cloudinary:', error);
+        throw error;
+    }
+};
+
+// Configuraciones específicas para diferentes tipos de upload
+const uploadConfig = {
+    // Para perfiles (una sola imagen)
+    profile: [
+        upload.single('profileImage'),
+        (req, res, next) => {
+            if (req.file) {
+                req.file.cloudinary = {
+                    url: req.file.path,
+                    public_id: req.file.filename
+                };
+            }
+            next();
+        }
+    ],
+    
+    // Para departamentos (múltiples imágenes, máximo 5)
+    flats: [
+        upload.array('flatImages', 5),
+        (req, res, next) => {
+            if (req.files) {
+                req.files = req.files.map(file => ({
+                    ...file,
+                    cloudinary: {
+                        url: file.path,
+                        public_id: file.filename
+                    }
+                }));
+            }
+            next();
+        }
+    ],
+    
+    // Para mensajes (una sola imagen)
+    message: [
+        upload.single('messageAttachment'),
+        (req, res, next) => {
+            if (req.file) {
+                req.file.cloudinary = {
+                    url: req.file.path,
+                    public_id: req.file.filename
+                };
+            }
+            next();
+        }
+    ]
+};
 
 // Middleware para manejar errores de upload
 const handleUploadErrors = (err, req, res, next) => {
@@ -101,30 +152,9 @@ const handleUploadErrors = (err, req, res, next) => {
     next();
 };
 
-// Middleware para eliminar archivos
-const deleteFile = async (filePath) => {
-    try {
-        await fs.promises.unlink(filePath);
-    } catch (error) {
-        console.error('Error deleting file:', error);
-    }
-};
-
-// Configuraciones específicas para diferentes tipos de upload
-const uploadConfig = {
-    // Para perfiles (una sola imagen)
-    profile: upload.single('profileImage'),
-    
-    // Para departamentos (múltiples imágenes, máximo 5)
-    flats: upload.array('flatImages', 5),
-    
-    // Para mensajes (una sola imagen)
-    message: upload.single('messageAttachment')
-};
-
 export {
     upload,
     uploadConfig,
     handleUploadErrors,
-    deleteFile
+    deleteFromCloudinary
 };

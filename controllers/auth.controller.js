@@ -1,5 +1,6 @@
 import { User } from "../models/user.model.js";
 import jwt from "jsonwebtoken";
+import { deleteFromCloudinary } from "../configs/cloudinary.config.js";
 
 const register = async (req, res) => {
     try {
@@ -8,21 +9,32 @@ const register = async (req, res) => {
         // Verificar si el usuario ya existe
         const existingUser = await User.findOne({ email });
         if (existingUser) {
+            // Si hay un archivo subido, eliminarlo
+            if (req.file?.cloudinary?.public_id) {
+                await deleteFromCloudinary(req.file.cloudinary.public_id);
+            }
             return res.status(400).json({
                 success: false,
                 message: "Email already registered"
             });
         }
 
-        const user = new User({
+        // Crear el usuario con o sin imagen de perfil
+        const userData = {
             email,
-            password, // Se hasheará automáticamente por el middleware del modelo
+            password,
             firstName,
             lastName,
-            birthDate,
-            profileImage: req.file ? req.file.path : undefined
-        });
+            birthDate
+        };
 
+        // Si hay una imagen subida, agregar los datos de Cloudinary
+        if (req.file?.cloudinary) {
+            userData.profileImage = req.file.cloudinary.url;
+            userData.profileImageId = req.file.cloudinary.public_id;
+        }
+
+        const user = new User(userData);
         await user.save();
 
         // Generar token
@@ -48,6 +60,10 @@ const register = async (req, res) => {
             }
         });
     } catch (error) {
+        // Si hay error y se subió un archivo, eliminarlo
+        if (req.file?.cloudinary?.public_id) {
+            await deleteFromCloudinary(req.file.cloudinary.public_id);
+        }
         res.status(400).json({
             success: false,
             message: "Error registering user",
@@ -78,11 +94,18 @@ const login = async (req, res) => {
             });
         }
 
-        // Generar token
+        // Generar access token
         const token = jwt.sign(
             { id: user._id, email: user.email, isAdmin: user.isAdmin },
             process.env.JWT_SECRET,
             { expiresIn: '24h' }
+        );
+
+        // Generar refresh token
+        const refreshToken = jwt.sign(
+            { id: user._id },
+            process.env.JWT_REFRESH_SECRET,
+            { expiresIn: '7d' }
         );
 
         res.status(200).json({
@@ -90,6 +113,7 @@ const login = async (req, res) => {
             message: "Login successful",
             data: {
                 token,
+                refreshToken,
                 user: {
                     id: user._id,
                     email: user.email,
@@ -132,8 +156,7 @@ const changePassword = async (req, res) => {
         }
 
         // Actualizar contraseña
-        user.password = newPassword; // Esto debería activar el middleware de hash
-        await user.save();
+        await user.updatePassword(newPassword);
 
         res.status(200).json({
             success: true,
@@ -148,4 +171,60 @@ const changePassword = async (req, res) => {
     }
 };
 
-export { register, login, changePassword };
+// Añadir método para refrescar token
+const refreshUserToken = async (req, res) => {
+    try {
+        const { refreshToken } = req.body;
+        
+        if (!refreshToken) {
+            return res.status(401).json({
+                success: false,
+                message: "Refresh token required"
+            });
+        }
+
+        try {
+            // Verificar refresh token
+            const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
+            
+            // Buscar usuario
+            const user = await User.findById(decoded.id).select('-password');
+            if (!user || user.atDeleted) {
+                return res.status(401).json({
+                    success: false,
+                    message: "Invalid refresh token - User not found or deleted"
+                });
+            }
+
+            // Generar nuevo access token
+            const newAccessToken = jwt.sign(
+                { id: user._id, email: user.email, isAdmin: user.isAdmin },
+                process.env.JWT_SECRET,
+                { expiresIn: '24h' }
+            );
+
+            res.status(200).json({
+                success: true,
+                data: {
+                    token: newAccessToken
+                }
+            });
+        } catch (error) {
+            if (error.name === 'TokenExpiredError') {
+                return res.status(401).json({
+                    success: false,
+                    message: "Refresh token expired"
+                });
+            }
+            throw error;
+        }
+    } catch (error) {
+        res.status(401).json({
+            success: false,
+            message: "Error refreshing token",
+            error: error.message
+        });
+    }
+};
+
+export { register, login, changePassword, refreshUserToken };
