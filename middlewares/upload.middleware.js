@@ -17,7 +17,7 @@ const storage = new CloudinaryStorage({
         folder: (req, file) => {
             // Determinar la carpeta según el tipo de archivo
             if (file.fieldname === 'profileImage') return 'uploads/profiles';
-            if (file.fieldname === 'flatImages') return 'uploads/flats';
+            if (file.fieldname === 'images') return 'uploads/flats'; // Cambiado de flatImages a images
             if (file.fieldname === 'messageAttachment') return 'uploads/messages';
             return 'uploads/others';
         },
@@ -87,7 +87,7 @@ const uploadConfig = {
     
     // Para departamentos (múltiples imágenes, máximo 5)
     flats: [
-        upload.array('flatImages', 5),
+        upload.array('images', 5), // Cambiado de flatImages a images
         (req, res, next) => {
             if (req.files) {
                 req.files = req.files.map(file => ({

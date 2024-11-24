@@ -7,15 +7,34 @@ const createFlat = async (req, res) => {
     try {
         const owner = req.user.id;
         
+        // Validar que se envíen imágenes
+        if (!req.files || req.files.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: "At least one image is required"
+            });
+        }
+
+        // Procesar las imágenes
+        let images = req.files.map((file, index) => ({
+            url: file.path, // Cloudinary devuelve la URL en file.path
+            public_id: file.filename, // Cloudinary devuelve el public_id en file.filename
+            description: file.originalname,
+            isMainImage: index === 0 // Primera imagen será la principal
+        }));
+
+        // Crear el objeto de datos del departamento
         const flatData = {
             ...req.body,
             owner,
-            images: req.files ? req.files.map(file => ({
-                url: file.cloudinary.url,
-                public_id: file.cloudinary.public_id,
-                description: file.originalname
-            })) : []
+            images
         };
+
+        // Convertir los valores numéricos
+        if (flatData.areaSize) flatData.areaSize = Number(flatData.areaSize);
+        if (flatData.rentPrice) flatData.rentPrice = Number(flatData.rentPrice);
+        if (flatData.yearBuilt) flatData.yearBuilt = Number(flatData.yearBuilt);
+        if (flatData.hasAC) flatData.hasAC = flatData.hasAC === 'true';
 
         const flat = new Flat(flatData);
         await flat.save();
@@ -28,10 +47,15 @@ const createFlat = async (req, res) => {
     } catch (error) {
         // Si hay error, eliminar las imágenes subidas
         if (req.files) {
-            await Promise.all(
-                req.files.map(file => deleteFromCloudinary(file.cloudinary.public_id))
-            );
+            for (const file of req.files) {
+                try {
+                    await deleteFromCloudinary(file.filename); // Usar filename como public_id
+                } catch (deleteError) {
+                    console.error('Error deleting file:', deleteError);
+                }
+            }
         }
+
         res.status(400).json({
             success: false,
             message: "Error creating flat",
