@@ -10,9 +10,11 @@ import { connectDB } from "./db/db.js";
 import configs from "./configs/configs.js";
 import userRoutes from "./routes/user.router.js";
 import authRoutes from "./routes/auth.router.js";
+import cors from "cors";
 
 const app = express();
 app.use(express.json());
+app.use(cors());
 
 connectDB();
 

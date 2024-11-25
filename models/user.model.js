@@ -4,11 +4,52 @@ import bcrypt from "bcrypt";
 import crypto from "crypto";
 
 const userSchema = new mongoose.Schema({
-  email: { type: String, required: true, unique: true },
-  password: { type: String, required: true },
-  firstName: { type: String, required: true },
-  lastName: { type: String, required: true },
-  birthDate: { type: Date, required: true },
+  email: {
+    type: String,
+    required: true,
+    unique: true,
+    validate: {
+      validator: function (v) {
+        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+      },
+      message: "Por favor ingrese un email válido",
+    },
+  },
+  password: {
+    type: String,
+    required: true,
+    minlength: [6, "La contraseña debe tener al menos 6 caracteres"],
+    validate: {
+      validator: function (v) {
+        return /^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{6,}$/.test(
+          v
+        );
+      },
+      message:
+        "La contraseña debe contener letras, números y al menos un carácter especial",
+    },
+  },
+  firstName: {
+    type: String,
+    required: true,
+    minlength: [2, "El nombre debe tener al menos 2 caracteres"],
+  },
+  lastName: {
+    type: String,
+    required: true,
+    minlength: [2, "El apellido debe tener al menos 2 caracteres"],
+  },
+  birthDate: {
+    type: Date,
+    required: true,
+    validate: {
+      validator: function (v) {
+        const age = new Date().getFullYear() - v.getFullYear();
+        return age >= 18 && age <= 120;
+      },
+      message: "La edad debe estar entre 18 y 120 años",
+    },
+  },
   isAdmin: { type: Boolean, default: false },
   atCreated: { type: Date, default: Date.now },
   atUpdated: { type: Date, default: Date.now },
