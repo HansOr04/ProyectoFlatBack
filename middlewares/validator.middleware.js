@@ -286,11 +286,6 @@ const validateChangePassword = (req, res, next) => {
         });
     }
 };
-
-// ... [resto de importaciones si las hay]
-
-// ... [otros middlewares de validación]
-
 const validateFlatUpdate = (req, res, next) => {
     try {
         const {
@@ -326,41 +321,50 @@ const validateFlatUpdate = (req, res, next) => {
             });
         }
 
+        // Validar y convertir areaSize
         if (areaSize !== undefined) {
-            if (typeof areaSize !== 'number' || areaSize <= 0) {
+            const areaSizeNum = Number(areaSize);
+            if (isNaN(areaSizeNum) || areaSizeNum <= 0) {
                 return res.status(400).json({
                     success: false,
                     message: "Area size must be a positive number"
                 });
             }
+            req.body.areaSize = areaSizeNum;
         }
 
-        if (hasAC !== undefined && typeof hasAC !== 'boolean') {
-            return res.status(400).json({
-                success: false,
-                message: "hasAC must be a boolean"
-            });
+        // Validar y convertir hasAC
+        if (hasAC !== undefined) {
+            req.body.hasAC = String(hasAC).toLowerCase() === 'true';
         }
 
+        // Validar y convertir yearBuilt
         if (yearBuilt !== undefined) {
+            const yearBuiltNum = Number(yearBuilt);
             const currentYear = new Date().getFullYear();
-            if (typeof yearBuilt !== 'number' || yearBuilt < 1800 || yearBuilt > currentYear) {
+            if (isNaN(yearBuiltNum) || yearBuiltNum < 1800 || yearBuiltNum > currentYear) {
                 return res.status(400).json({
                     success: false,
                     message: `Year built must be between 1800 and ${currentYear}`
                 });
             }
+            req.body.yearBuilt = yearBuiltNum;
         }
 
+        // Validar y convertir rentPrice
         if (rentPrice !== undefined) {
-            if (typeof rentPrice !== 'number' || rentPrice <= 0) {
+            const rentPriceNum = Number(rentPrice);
+            if (isNaN(rentPriceNum) || rentPriceNum <= 0) {
                 return res.status(400).json({
                     success: false,
-                    message: "Rent price must be a positive number"
+                    message: "Rent price must be a positive number",
+                    received_value: rentPrice
                 });
             }
+            req.body.rentPrice = rentPriceNum;
         }
 
+        // Validar y convertir dateAvailable
         if (dateAvailable !== undefined) {
             const availableDate = new Date(dateAvailable);
             if (isNaN(availableDate.getTime())) {
@@ -369,6 +373,7 @@ const validateFlatUpdate = (req, res, next) => {
                     message: "Invalid date available format"
                 });
             }
+            req.body.dateAvailable = availableDate;
         }
 
         next();
@@ -385,7 +390,7 @@ export {
     validateRegister,
     validateLogin,
     validateFlatCreation,
-    validateFlatUpdate, // Agregada la exportación que faltaba
+    validateFlatUpdate,
     validateMessage,
     validateUserUpdate,
     validateChangePassword

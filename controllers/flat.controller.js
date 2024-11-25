@@ -182,32 +182,45 @@ const updateFlat = async (req, res) => {
             });
         }
 
-        // Actualizar valores numéricos si se proporcionan
-        if (req.body.areaSize) req.body.areaSize = Number(req.body.areaSize);
-        if (req.body.rentPrice) req.body.rentPrice = Number(req.body.rentPrice);
-        if (req.body.yearBuilt) req.body.yearBuilt = Number(req.body.yearBuilt);
-        if (req.body.hasAC !== undefined) req.body.hasAC = req.body.hasAC === 'true';
+        // Convertir campos numéricos
+        const updateData = { ...req.body };
+        if (updateData.rentPrice) {
+            updateData.rentPrice = Number(updateData.rentPrice);
+            if (isNaN(updateData.rentPrice) || updateData.rentPrice <= 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Rent price must be a positive number"
+                });
+            }
+        }
+        if (updateData.areaSize) updateData.areaSize = Number(updateData.areaSize);
+        if (updateData.yearBuilt) updateData.yearBuilt = Number(updateData.yearBuilt);
+        if (updateData.hasAC !== undefined) updateData.hasAC = updateData.hasAC === 'true';
 
+        // Manejar imágenes nuevas si existen
         if (req.files && req.files.length > 0) {
             const newImages = req.files.map(file => ({
                 url: file.path,
                 public_id: file.filename,
                 description: file.originalname
             }));
-            flat.images.push(...newImages);
+            updateData.images = [...flat.images, ...newImages];
         }
 
-        // Actualizar otros campos
-        Object.assign(flat, req.body);
-        flat.atUpdated = Date.now();
-
-        await flat.save();
-        await flat.populate('owner', 'firstName lastName email');
+        // Actualizar
+        const updatedFlat = await Flat.findByIdAndUpdate(
+            req.params.id,
+            { 
+                ...updateData,
+                atUpdated: Date.now()
+            },
+            { new: true }
+        ).populate('owner', 'firstName lastName email');
 
         res.status(200).json({
             success: true,
             message: "Flat updated successfully",
-            data: flat
+            data: updatedFlat
         });
     } catch (error) {
         if (req.files) {
