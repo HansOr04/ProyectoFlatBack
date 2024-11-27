@@ -10,12 +10,21 @@ import cors from "cors";
 import morgan from "morgan";
 import { connectDB } from "./db/db.js";
 import configs from "./configs/configs.js";
+import userRoutes from "./routes/user.router.js";
+import authRoutes from "./routes/auth.router.js";
+import cors from "cors";
 
+<<<<<<< HEAD
 // Importación de rutas
 import authRouter from "./routes/auth.router.js";
 import userRouter from "./routes/user.router.js";
 import flatRouter from "./routes/flat.router.js";
 import messageRouter from "./routes/message.router.js";
+=======
+const app = express();
+app.use(express.json());
+app.use(cors());
+>>>>>>> main
 
 const app = express();
 
@@ -30,6 +39,7 @@ app.use('/uploads', express.static('uploads'));
 // Conexión a la base de datos
 connectDB();
 
+<<<<<<< HEAD
 // Definición de rutas base
 app.use("/auth", authRouter);
 app.use("/users", userRouter);
@@ -66,3 +76,11 @@ process.on('unhandledRejection', (err) => {
     // En producción podrías querer cerrar el servidor gracefully
     // server.close(() => process.exit(1));
 });
+=======
+app.use("/users", userRoutes);
+app.use("/auth", authRoutes);
+
+app.listen(configs.PORT, () => {
+  console.log(`Server running on port ${configs.PORT}`);
+});
+>>>>>>> main
