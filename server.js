@@ -5,3 +5,22 @@
 //3.- Llamar a nuestro archivo de conexion a la base de datos
 //4.- Podemos agregar un middleware global -> cors
 //5.- E; server se comunica con la capa de ruteo
+import express from "express";
+import { connectDB } from "./db/db.js";
+import configs from "./configs/configs.js";
+import userRoutes from "./routes/user.router.js";
+import authRoutes from "./routes/auth.router.js";
+import cors from "cors";
+
+const app = express();
+app.use(express.json());
+app.use(cors());
+
+connectDB();
+
+app.use("/users", userRoutes);
+app.use("/auth", authRoutes);
+
+app.listen(configs.PORT, () => {
+  console.log(`Server running on port ${configs.PORT}`);
+});
