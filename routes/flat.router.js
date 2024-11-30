@@ -6,7 +6,8 @@ import {
     updateFlat, 
     deleteFlat, 
     toggleFavorite,
-    updateImages 
+    updateImages,
+    getFlatStats
 } from '../controllers/flat.controller.js';
 import { verifyToken } from '../middlewares/auth.middleware.js';
 import { isAdminOrOwner } from '../middlewares/authorization.middleware.js';
@@ -24,11 +25,12 @@ const cacheControl = (req, res, next) => {
 // Rutas públicas
 router.get('/', cacheControl, getFlats);
 router.get('/:id', cacheControl, getFlatById);
+router.get('/:id/stats', cacheControl, getFlatStats); // Nueva ruta para estadísticas
 
 // Rutas protegidas
 router.post('/',
     verifyToken,
-    uploadConfig.flats, // Configuración específica para flats
+    uploadConfig.flats,
     handleUploadErrors,
     validateFlatCreation,
     createFlat
@@ -64,6 +66,9 @@ router.post('/:id/favorite',
     toggleFavorite
 );
 
+// Filtros avanzados
+router.get('/search/advanced', cacheControl, getFlats); // Ruta alternativa para búsqueda avanzada
+
 // Manejo de errores específico para esta ruta
 router.use((err, req, res, next) => {
     if (err.name === 'MulterError') {
@@ -73,6 +78,15 @@ router.use((err, req, res, next) => {
             code: 'UPLOAD_ERROR'
         });
     }
+
+    if (err.name === 'ValidationError') {
+        return res.status(400).json({
+            success: false,
+            message: "Validation error",
+            errors: Object.values(err.errors).map(e => e.message)
+        });
+    }
+
     next(err);
 });
 

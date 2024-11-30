@@ -1,9 +1,8 @@
 import { Flat } from "../models/flat.models.js";
-import {Message} from "../models/message.model.js";
-import { User } from "../models/user.model.js"; // Añadido para toggleFavorite
+import { Message } from "../models/message.model.js";
+import { User } from "../models/user.model.js";
 import { deleteFromCloudinary } from "../configs/cloudinary.config.js";
 
-// Crear un departamento
 const createFlat = async (req, res) => {
     try {
         const owner = req.user.id;
@@ -18,8 +17,8 @@ const createFlat = async (req, res) => {
 
         // Procesar las imágenes
         let images = req.files.map((file, index) => ({
-            url: file.path,
-            public_id: file.filename,
+            url: file.cloudinary.url,
+            public_id: file.cloudinary.public_id,
             description: file.originalname,
             isMainImage: index === 0
         }));
@@ -28,19 +27,45 @@ const createFlat = async (req, res) => {
         const flatData = {
             ...req.body,
             owner,
-            images
+            images,
+            ratings: {
+                overall: 0,
+                aspects: {
+                    cleanliness: 0,
+                    communication: 0,
+                    location: 0,
+                    accuracy: 0,
+                    value: 0
+                },
+                totalReviews: 0
+            }
         };
 
-        // Convertir los valores numéricos
-        if (flatData.areaSize) flatData.areaSize = Number(flatData.areaSize);
-        if (flatData.rentPrice) flatData.rentPrice = Number(flatData.rentPrice);
-        if (flatData.yearBuilt) flatData.yearBuilt = Number(flatData.yearBuilt);
-        if (flatData.hasAC) flatData.hasAC = flatData.hasAC === 'true';
+        // Procesar campos booleanos de amenities
+        if (flatData.amenities) {
+            const booleanFields = [
+                'wifi', 'tv', 'kitchen', 'washer', 'airConditioning', 
+                'heating', 'workspace', 'pool', 'gym', 'elevator', 
+                'petsAllowed', 'smokeAlarm', 'firstAidKit', 
+                'fireExtinguisher', 'securityCameras'
+            ];
+
+            booleanFields.forEach(field => {
+                if (flatData.amenities[field] !== undefined) {
+                    flatData.amenities[field] = flatData.amenities[field] === true || 
+                                              flatData.amenities[field] === 'true';
+                }
+            });
+
+            if (flatData.amenities.parking) {
+                flatData.amenities.parking.available = 
+                    flatData.amenities.parking.available === true || 
+                    flatData.amenities.parking.available === 'true';
+            }
+        }
 
         const flat = new Flat(flatData);
         await flat.save();
-
-        // Poblar el owner antes de enviar la respuesta
         await flat.populate('owner', 'firstName lastName email');
 
         res.status(201).json({
@@ -52,7 +77,7 @@ const createFlat = async (req, res) => {
         if (req.files) {
             for (const file of req.files) {
                 try {
-                    await deleteFromCloudinary(file.filename);
+                    await deleteFromCloudinary(file.cloudinary.public_id);
                 } catch (deleteError) {
                     console.error('Error deleting file:', deleteError);
                 }
@@ -67,7 +92,6 @@ const createFlat = async (req, res) => {
     }
 };
 
-// Obtener todos los departamentos con filtros y paginación
 const getFlats = async (req, res) => {
     try {
         const {
@@ -76,27 +100,79 @@ const getFlats = async (req, res) => {
             city,
             minPrice,
             maxPrice,
-            hasAC,
+            propertyType,
+            bedrooms,
+            bathrooms,
             minArea,
-            available
+            maxArea,
+            amenities,
+            parking,
+            petsAllowed,
+            available,
+            minRating,
+            sortBy,
+            order = 'desc'
         } = req.query;
 
         const filters = {};
+
+        // Filtros básicos
         if (city) filters.city = new RegExp(city, 'i');
         if (minPrice) filters.rentPrice = { $gte: Number(minPrice) };
         if (maxPrice) filters.rentPrice = { ...filters.rentPrice, $lte: Number(maxPrice) };
-        if (hasAC !== undefined) filters.hasAC = hasAC === 'true';
+        if (propertyType) filters.propertyType = propertyType;
+        if (bedrooms) filters.bedrooms = Number(bedrooms);
+        if (bathrooms) filters.bathrooms = Number(bathrooms);
         if (minArea) filters.areaSize = { $gte: Number(minArea) };
+        if (maxArea) filters.areaSize = { ...filters.areaSize, $lte: Number(maxArea) };
         if (available === 'true') filters.dateAvailable = { $lte: new Date() };
+        if (minRating) filters['ratings.overall'] = { $gte: Number(minRating) };
+
+        // Filtros de amenidades
+        if (amenities) {
+            const amenityList = amenities.split(',');
+            amenityList.forEach(amenity => {
+                filters[`amenities.${amenity}`] = true;
+            });
+        }
+
+        // Filtro de estacionamiento
+        if (parking) {
+            filters['amenities.parking.available'] = true;
+            if (parking !== 'any') {
+                filters['amenities.parking.type'] = parking;
+            }
+        }
+
+        // Filtro de mascotas
+        if (petsAllowed === 'true') {
+            filters['amenities.petsAllowed'] = true;
+        }
 
         const skip = (page - 1) * limit;
+
+        // Configuración de ordenamiento
+        let sortOptions = {};
+        switch (sortBy) {
+            case 'price':
+                sortOptions.rentPrice = order === 'desc' ? -1 : 1;
+                break;
+            case 'rating':
+                sortOptions['ratings.overall'] = order === 'desc' ? -1 : 1;
+                break;
+            case 'date':
+                sortOptions.atCreated = order === 'desc' ? -1 : 1;
+                break;
+            default:
+                sortOptions.atCreated = -1;
+        }
 
         const [flats, total] = await Promise.all([
             Flat.find(filters)
                 .populate('owner', 'firstName lastName email')
                 .skip(skip)
                 .limit(parseInt(limit))
-                .sort({ atCreated: -1 }),
+                .sort(sortOptions),
             Flat.countDocuments(filters)
         ]);
 
@@ -119,15 +195,18 @@ const getFlats = async (req, res) => {
     }
 };
 
-// Obtener un departamento por ID
 const getFlatById = async (req, res) => {
     try {
-        const [flat, messages] = await Promise.all([
+        const [flat, reviews] = await Promise.all([
             Flat.findById(req.params.id)
                 .populate('owner', 'firstName lastName email'),
-            Message.find({ flatID: req.params.id })
-                .populate('author', 'firstName lastName profileImage')
-                .sort({ atCreated: -1 })
+            Message.find({
+                flatID: req.params.id,
+                parentMessage: null,
+                isHidden: false
+            })
+            .populate('author', 'firstName lastName profileImage')
+            .sort({ atCreated: -1 })
         ]);
 
         if (!flat) {
@@ -137,11 +216,22 @@ const getFlatById = async (req, res) => {
             });
         }
 
+        const ratingDistribution = {
+            1: 0, 2: 0, 3: 0, 4: 0, 5: 0
+        };
+
+        reviews.forEach(review => {
+            if (review.rating?.overall) {
+                ratingDistribution[Math.floor(review.rating.overall)]++;
+            }
+        });
+
         res.status(200).json({
             success: true,
             data: {
                 ...flat.toObject(),
-                messages
+                reviews,
+                ratingDistribution
             }
         });
     } catch (error) {
@@ -153,7 +243,6 @@ const getFlatById = async (req, res) => {
     }
 };
 
-// Actualizar un departamento
 const updateFlat = async (req, res) => {
     try {
         const flat = await Flat.findById(req.params.id);
@@ -161,7 +250,7 @@ const updateFlat = async (req, res) => {
         if (!flat) {
             if (req.files) {
                 await Promise.all(
-                    req.files.map(file => deleteFromCloudinary(file.filename))
+                    req.files.map(file => deleteFromCloudinary(file.cloudinary.public_id))
                 );
             }
             return res.status(404).json({
@@ -173,7 +262,7 @@ const updateFlat = async (req, res) => {
         if (flat.owner.toString() !== req.user.id && !req.user.isAdmin) {
             if (req.files) {
                 await Promise.all(
-                    req.files.map(file => deleteFromCloudinary(file.filename))
+                    req.files.map(file => deleteFromCloudinary(file.cloudinary.public_id))
                 );
             }
             return res.status(403).json({
@@ -182,32 +271,36 @@ const updateFlat = async (req, res) => {
             });
         }
 
-        // Convertir campos numéricos
+        // Procesar los datos de actualización
         const updateData = { ...req.body };
-        if (updateData.rentPrice) {
-            updateData.rentPrice = Number(updateData.rentPrice);
-            if (isNaN(updateData.rentPrice) || updateData.rentPrice <= 0) {
-                return res.status(400).json({
-                    success: false,
-                    message: "Rent price must be a positive number"
-                });
-            }
-        }
-        if (updateData.areaSize) updateData.areaSize = Number(updateData.areaSize);
-        if (updateData.yearBuilt) updateData.yearBuilt = Number(updateData.yearBuilt);
-        if (updateData.hasAC !== undefined) updateData.hasAC = updateData.hasAC === 'true';
 
-        // Manejar imágenes nuevas si existen
+        // Procesar campos booleanos si existen
+        if (updateData.amenities) {
+            const booleanFields = [
+                'wifi', 'tv', 'kitchen', 'washer', 'airConditioning', 
+                'heating', 'workspace', 'pool', 'gym', 'elevator', 
+                'petsAllowed', 'smokeAlarm', 'firstAidKit', 
+                'fireExtinguisher', 'securityCameras'
+            ];
+
+            booleanFields.forEach(field => {
+                if (updateData.amenities[field] !== undefined) {
+                    updateData.amenities[field] = updateData.amenities[field] === true || 
+                                                updateData.amenities[field] === 'true';
+                }
+            });
+        }
+
+        // Procesar imágenes nuevas si existen
         if (req.files && req.files.length > 0) {
             const newImages = req.files.map(file => ({
-                url: file.path,
-                public_id: file.filename,
+                url: file.cloudinary.url,
+                public_id: file.cloudinary.public_id,
                 description: file.originalname
             }));
             updateData.images = [...flat.images, ...newImages];
         }
 
-        // Actualizar
         const updatedFlat = await Flat.findByIdAndUpdate(
             req.params.id,
             { 
@@ -225,7 +318,7 @@ const updateFlat = async (req, res) => {
     } catch (error) {
         if (req.files) {
             await Promise.all(
-                req.files.map(file => deleteFromCloudinary(file.filename))
+                req.files.map(file => deleteFromCloudinary(file.cloudinary.public_id))
             );
         }
         res.status(400).json({
@@ -236,10 +329,6 @@ const updateFlat = async (req, res) => {
     }
 };
 
-
-
-
-// Borrar un departamento
 const deleteFlat = async (req, res) => {
     try {
         const flat = await Flat.findById(req.params.id);
@@ -266,12 +355,17 @@ const deleteFlat = async (req, res) => {
         // Eliminar comentarios asociados
         await Message.deleteMany({ flatID: req.params.id });
         
-        // Eliminar el departamento
-        await Flat.findByIdAndDelete(req.params.id);
+        // Eliminar referencias en favoritos de usuarios
+        await User.updateMany(
+            { favoriteFlats: req.params.id },
+            { $pull: { favoriteFlats: req.params.id } }
+        );
+
+        await flat.deleteOne();
 
         res.status(200).json({
             success: true,
-            message: "Flat and associated comments deleted successfully"
+            message: "Flat and associated data deleted successfully"
         });
     } catch (error) {
         res.status(400).json({
@@ -282,7 +376,6 @@ const deleteFlat = async (req, res) => {
     }
 };
 
-// Manejar imágenes del departamento
 const updateImages = async (req, res) => {
     try {
         const { id } = req.params;
@@ -314,7 +407,7 @@ const updateImages = async (req, res) => {
             });
         }
 
-        // Eliminar imágenes de Cloudinary
+        // Eliminar imágenes seleccionadas
         if (deleteImages && deleteImages.length > 0) {
             const imagesToDelete = flat.images.filter(img => 
                 deleteImages.includes(img._id.toString())
@@ -363,7 +456,6 @@ const updateImages = async (req, res) => {
     }
 };
 
-// Agregar o quitar un departamento de favoritos
 const toggleFavorite = async (req, res) => {
     try {
         const flatId = req.params.id;
@@ -395,6 +487,89 @@ const toggleFavorite = async (req, res) => {
         });
     }
 };
+
+// Método para obtener las estadísticas de calificaciones
+const getFlatStats = async (req, res) => {
+    try {
+        const flatId = req.params.id;
+
+        const [flat, reviews] = await Promise.all([
+            Flat.findById(flatId),
+            Message.find({
+                flatID: flatId,
+                parentMessage: null,
+                isHidden: false,
+                'rating.overall': { $exists: true }
+            }).select('rating')
+        ]);
+
+        if (!flat) {
+            return res.status(404).json({
+                success: false,
+                message: "Flat not found"
+            });
+        }
+
+        // Calcular distribución de calificaciones
+        const ratingDistribution = {
+            1: 0, 2: 0, 3: 0, 4: 0, 5: 0
+        };
+
+        // Calcular promedios por aspecto
+        const aspectTotals = {
+            cleanliness: 0,
+            communication: 0,
+            location: 0,
+            accuracy: 0,
+            value: 0
+        };
+
+        const aspectCounts = { ...aspectTotals };
+
+        reviews.forEach(review => {
+            // Contar distribución de calificaciones generales
+            const overallRating = Math.floor(review.rating.overall);
+            if (ratingDistribution.hasOwnProperty(overallRating)) {
+                ratingDistribution[overallRating]++;
+            }
+
+            // Sumar calificaciones por aspecto
+            if (review.rating.aspects) {
+                Object.keys(aspectTotals).forEach(aspect => {
+                    if (review.rating.aspects[aspect]) {
+                        aspectTotals[aspect] += review.rating.aspects[aspect];
+                        aspectCounts[aspect]++;
+                    }
+                });
+            }
+        });
+
+        // Calcular promedios por aspecto
+        const aspectAverages = {};
+        Object.keys(aspectTotals).forEach(aspect => {
+            aspectAverages[aspect] = aspectCounts[aspect] > 0 
+                ? (aspectTotals[aspect] / aspectCounts[aspect]).toFixed(1)
+                : 0;
+        });
+
+        res.status(200).json({
+            success: true,
+            data: {
+                totalReviews: reviews.length,
+                averageRating: flat.ratings.overall,
+                ratingDistribution,
+                aspectAverages
+            }
+        });
+    } catch (error) {
+        res.status(400).json({
+            success: false,
+            message: "Error fetching flat statistics",
+            error: error.message
+        });
+    }
+};
+
 export { 
     createFlat, 
     getFlats, 
@@ -402,5 +577,6 @@ export {
     updateFlat, 
     deleteFlat,
     toggleFavorite,
-    updateImages
+    updateImages,
+    getFlatStats
 };
