@@ -10,15 +10,11 @@ import cors from "cors";
 import morgan from "morgan";
 import { connectDB } from "./db/db.js";
 import configs from "./configs/configs.js";
-
-// Importación de rutas
 import authRouter from "./routes/auth.router.js";
 import userRouter from "./routes/user.router.js";
 import flatRouter from "./routes/flat.router.js";
 import messageRouter from "./routes/message.router.js";
-
 const app = express();
-
 // Middlewares globales
 app.use(cors()); // Habilitar CORS
 app.use(express.json()); // Parser para JSON
