@@ -10,18 +10,19 @@ import {
 import { verifyToken } from '../middlewares/auth.middleware.js';
 import { isAdmin } from '../middlewares/authorization.middleware.js';
 import { upload } from '../middlewares/upload.middleware.js';
-import { validateMessage } from '../middlewares/validator.middleware.js';
+import { validateMessage, validateRating } from '../middlewares/validator.middleware.js';
 
 const router = express.Router();
 
 // Rutas públicas
-router.get('/flat/:flatID', getMessagesByFlat); // Obtener comentarios de un flat específico
+router.get('/flat/:flatID', getMessagesByFlat); // Obtener comentarios y calificaciones de un flat
 
 // Rutas que requieren autenticación
 router.post('/flat/:flatID',
     verifyToken,
-    upload.single('attachment'), // Permite subir una imagen como adjunto
+    upload.single('attachment'),
     validateMessage,
+    validateRating, // Nuevo middleware para validar calificaciones
     createMessage
 );
 
@@ -36,6 +37,7 @@ router.put('/:id',
     verifyToken,
     upload.single('attachment'),
     validateMessage,
+    validateRating, // Validación para actualizaciones de calificación
     updateMessage
 );
 
@@ -50,5 +52,24 @@ router.patch('/:id/visibility',
     isAdmin,
     toggleMessageVisibility
 );
+
+// Middleware de manejo de errores específico para esta ruta
+router.use((err, req, res, next) => {
+    if (err.name === 'ValidationError') {
+        return res.status(400).json({
+            success: false,
+            message: "Validation error",
+            errors: Object.values(err.errors).map(e => e.message)
+        });
+    }
+    if (err.name === 'MulterError') {
+        return res.status(400).json({
+            success: false,
+            message: "File upload error",
+            error: err.message
+        });
+    }
+    next(err);
+});
 
 export default router;

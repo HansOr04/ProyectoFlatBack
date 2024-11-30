@@ -1,4 +1,4 @@
-<<<<<<< HEAD
+
 
 import { User } from "../models/user.model.js";
 import { Flat } from "../models/flat.models.js";
@@ -183,7 +183,7 @@ export const isPremiumFeature = async (req, res, next) => {
         });
     }
 };
-=======
+
 //Vamos a recibir como parametro los roles que pueden acceder a un servicio, los roles van a ser un array
 const authorizationMiddleware = (roles) => {
   return (req, res, next) => {
@@ -199,4 +199,3 @@ const authorizationMiddleware = (roles) => {
 };
 
 export default authorizationMiddleware;
->>>>>>> main
