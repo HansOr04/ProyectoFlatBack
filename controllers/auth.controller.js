@@ -1,6 +1,8 @@
 import { User } from "../models/user.model.js";
 import jwt from "jsonwebtoken";
 import { deleteFromCloudinary } from "../configs/cloudinary.config.js";
+import sendEmail from "../utils/email.js";
+import crypto from "crypto";
 
 const register = async (req, res) => {
     try {
@@ -171,7 +173,6 @@ const changePassword = async (req, res) => {
     }
 };
 
-// Añadir método para refrescar token
 const refreshUserToken = async (req, res) => {
     try {
         const { refreshToken } = req.body;
@@ -227,4 +228,107 @@ const refreshUserToken = async (req, res) => {
     }
 };
 
-export { register, login, changePassword, refreshUserToken };
+const forgotPasswordRequest = async (req, res) => {
+    try {
+        const { email } = req.body;
+
+        // Validar si el correo existe en la BDD
+        const user = await User.findOne({ email: email.trim() });
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: "User not found"
+            });
+        }
+
+        // Generar token único para enviar al correo
+        const resetToken = user.generateResetToken();
+        await user.save({ validateBeforeSave: false });
+
+        // Generar URL para resetear contraseña
+        const resetUrl = `http://localhost:5173/reset-password/${resetToken}`;
+
+        // Enviar correo al usuario
+        try {
+            const message = `Para resetear tu contraseña, por favor haz click en el siguiente enlace: ${resetUrl}`;
+            await sendEmail({
+                email: user.email,
+                subject: "Restablecer tu contraseña",
+                message,
+            });
+
+            res.status(200).json({
+                success: true,
+                message: "Reset password email sent successfully"
+            });
+        } catch (error) {
+            user.resetPasswordToken = undefined;
+            user.resetPasswordExpire = undefined;
+            await user.save({ validateBeforeSave: false });
+
+            res.status(500).json({
+                success: false,
+                message: "Error sending email",
+                error: error.message
+            });
+        }
+    } catch (error) {
+        res.status(400).json({
+            success: false,
+            message: "Error processing forgot password request",
+            error: error.message
+        });
+    }
+};
+
+const resetPassword = async (req, res) => {
+    try {
+        const { token } = req.params;
+        const { password } = req.body;
+
+        // Hashear el token para comparar con el almacenado
+        const resetPasswordToken = crypto
+            .createHash("sha256")
+            .update(token)
+            .digest("hex");
+
+        // Buscar usuario con token válido
+        const user = await User.findOne({
+            resetPasswordToken,
+            resetPasswordExpire: { $gt: Date.now() }
+        });
+
+        if (!user) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid or expired token"
+            });
+        }
+
+        // Actualizar contraseña
+        user.password = password;
+        user.resetPasswordToken = undefined;
+        user.resetPasswordExpire = undefined;
+        await user.save();
+
+        res.status(200).json({
+            success: true,
+            message: "Password updated successfully"
+        });
+    } catch (error) {
+        res.status(400).json({
+            success: false,
+            message: "Error resetting password",
+            error: error.message
+        });
+    }
+};
+
+export {
+    register,
+    login,
+    changePassword,
+    refreshUserToken,
+    forgotPasswordRequest,
+    resetPassword
+};

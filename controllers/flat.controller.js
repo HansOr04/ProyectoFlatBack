@@ -23,11 +23,34 @@ const createFlat = async (req, res) => {
             isMainImage: index === 0
         }));
 
+        // Parsear los campos JSON
+        const amenities = req.body.amenities ? JSON.parse(req.body.amenities) : {};
+        const houseRules = req.body.houseRules ? JSON.parse(req.body.houseRules) : {};
+        const location = req.body.location ? JSON.parse(req.body.location) : {};
+        const availability = req.body.availability ? JSON.parse(req.body.availability) : {};
+
         // Crear el objeto de datos del departamento
         const flatData = {
-            ...req.body,
+            title: req.body.title,
+            description: req.body.description,
+            propertyType: req.body.propertyType,
+            city: req.body.city,
+            streetName: req.body.streetName,
+            streetNumber: req.body.streetNumber,
+            areaSize: Number(req.body.areaSize),
+            yearBuilt: Number(req.body.yearBuilt),
+            rentPrice: Number(req.body.rentPrice),
+            dateAvailable: req.body.dateAvailable,
+            bedrooms: Number(req.body.bedrooms),
+            bathrooms: Number(req.body.bathrooms),
+            maxGuests: Number(req.body.maxGuests),
             owner,
             images,
+            // Añadir los objetos parseados
+            amenities,
+            houseRules,
+            location,
+            availability,
             ratings: {
                 overall: 0,
                 aspects: {
@@ -74,6 +97,7 @@ const createFlat = async (req, res) => {
             data: flat
         });
     } catch (error) {
+        console.error('Error completo:', error);
         if (req.files) {
             for (const file of req.files) {
                 try {

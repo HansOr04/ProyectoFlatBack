@@ -513,6 +513,85 @@ const validateFlatUpdate = (req, res, next) => {
     }
 };
 
+const validateForgotPassword = (req, res, next) => {
+    try {
+        const { email } = req.body;
+
+        if (!email) {
+            return res.status(400).json({
+                success: false,
+                message: "Email is required"
+            });
+        }
+
+        // Validar formato de email
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid email format"
+            });
+        }
+
+        next();
+    } catch (error) {
+        res.status(400).json({
+            success: false,
+            message: "Error in validation",
+            error: error.message
+        });
+    }
+};
+
+const validateResetPassword = (req, res, next) => {
+    try {
+        const { password } = req.body;
+        const { token } = req.params;
+
+        // Validar que existe el token
+        if (!token) {
+            return res.status(400).json({
+                success: false,
+                message: "Reset token is required"
+            });
+        }
+
+        // Validar que existe la contraseña
+        if (!password) {
+            return res.status(400).json({
+                success: false,
+                message: "New password is required"
+            });
+        }
+
+        // Validar longitud de la contraseña
+        if (password.length < 8 || password.length > 20) {
+            return res.status(400).json({
+                success: false,
+                message: "Password must be between 8 and 20 characters"
+            });
+        }
+
+        // Validar complejidad de la contraseña
+        const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/;
+        if (!passwordRegex.test(password)) {
+            return res.status(400).json({
+                success: false,
+                message: "Password must contain at least one uppercase letter, one lowercase letter, and one number"
+            });
+        }
+
+        next();
+    } catch (error) {
+        res.status(400).json({
+            success: false,
+            message: "Error in validation",
+            error: error.message
+        });
+    }
+};
+
+// Actualizar las exportaciones para incluir los nuevos validadores
 export {
     validateRegister,
     validateLogin,
@@ -521,5 +600,7 @@ export {
     validateMessage,
     validateUserUpdate,
     validateChangePassword,
-    validateRating
+    validateRating,
+    validateForgotPassword,    // Añadir esta exportación
+    validateResetPassword     // Añadir esta exportación
 };

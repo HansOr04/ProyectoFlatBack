@@ -1,7 +1,6 @@
 import mongoose from "mongoose";
 import bcrypt from "bcrypt";
 
-
 const userSchema = new mongoose.Schema({
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true },
@@ -22,6 +21,9 @@ const userSchema = new mongoose.Schema({
     atUpdated: { type: Date, default: Date.now },
     favoriteFlats: [{ type: mongoose.Schema.Types.ObjectId, ref: "flats" }],
     atDeleted: { type: Date, default: null },
+}, {
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true }
 });
 
 // Middleware para hashear la contraseña antes de guardar
@@ -81,6 +83,14 @@ userSchema.virtual('fullName').get(function() {
 // Virtual para verificar si el usuario está activo
 userSchema.virtual('isActive').get(function() {
     return this.atDeleted === null;
+});
+
+// Virtual para contar los flats del usuario
+userSchema.virtual('totalFlats', {
+    ref: 'flats',
+    localField: '_id',
+    foreignField: 'owner',
+    count: true
 });
 
 // Método para soft delete

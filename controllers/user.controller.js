@@ -1,4 +1,3 @@
-
 import { User } from "../models/user.model.js";
 import { deleteFromCloudinary } from "../configs/cloudinary.config.js";
 
@@ -13,7 +12,8 @@ const getUsers = async (req, res) => {
 
         const users = await User.find({ atDeleted: null })
             .select('-password')
-            .populate('favoriteFlats');
+            .populate('favoriteFlats')
+            .populate('totalFlats');
 
         res.status(200).json({
             success: true,
@@ -23,6 +23,35 @@ const getUsers = async (req, res) => {
         res.status(400).json({
             success: false,
             message: "Error fetching users",
+            error: error.message
+        });
+    }
+};
+
+const getProfile = async (req, res) => {
+    try {
+        const userId = req.user.id;
+
+        const user = await User.findById(userId)
+            .select('-password')
+            .populate('favoriteFlats')
+            .populate('totalFlats');
+
+        if (!user || user.atDeleted) {
+            return res.status(404).json({
+                success: false,
+                message: "User not found"
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            data: user
+        });
+    } catch (error) {
+        res.status(400).json({
+            success: false,
+            message: "Error fetching profile",
             error: error.message
         });
     }
@@ -41,7 +70,8 @@ const getUserById = async (req, res) => {
 
         const user = await User.findById(id)
             .select('-password')
-            .populate('favoriteFlats');
+            .populate('favoriteFlats')
+            .populate('totalFlats');
 
         if (!user || user.atDeleted) {
             return res.status(404).json({
@@ -179,7 +209,6 @@ const deleteUser = async (req, res) => {
     }
 };
 
-// Las funciones de favoritos se mantienen igual ya que no manejan archivos
 const getFavorites = async (req, res) => {
     try {
         const userId = req.user.id;
@@ -282,5 +311,6 @@ export {
     deleteUser,
     getFavorites,
     addToFavorites,
-    removeFromFavorites
+    removeFromFavorites,
+    getProfile
 };
