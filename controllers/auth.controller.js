@@ -3,7 +3,7 @@ import jwt from "jsonwebtoken";
 import { deleteFromCloudinary } from "../configs/cloudinary.config.js";
 import sendEmail from "../utils/email.js";
 import crypto from "crypto";
-
+import { Flat } from "../models/flat.models.js"; // Añadir esta importación
 const register = async (req, res) => {
     try {
         const { email, password, firstName, lastName, birthDate } = req.body;
@@ -27,7 +27,8 @@ const register = async (req, res) => {
             password,
             firstName,
             lastName,
-            birthDate
+            birthDate,
+            flatsOwned: [] // Inicializar el array de flats
         };
 
         // Si hay una imagen subida, agregar los datos de Cloudinary
@@ -38,6 +39,11 @@ const register = async (req, res) => {
 
         const user = new User(userData);
         await user.save();
+
+        // Obtener el usuario con sus flats
+        const populatedUser = await User.findById(user._id)
+            .select('-password')
+            .populate('flatsOwned');
 
         // Generar token
         const token = jwt.sign(
@@ -57,12 +63,13 @@ const register = async (req, res) => {
                     firstName: user.firstName,
                     lastName: user.lastName,
                     isAdmin: user.isAdmin,
-                    profileImage: user.profileImage
+                    profileImage: user.profileImage,
+                    flatsOwned: populatedUser.flatsOwned || [],
+                    totalFlats: populatedUser.flatsOwned?.length || 0
                 }
             }
         });
     } catch (error) {
-        // Si hay error y se subió un archivo, eliminarlo
         if (req.file?.cloudinary?.public_id) {
             await deleteFromCloudinary(req.file.cloudinary.public_id);
         }
@@ -79,7 +86,9 @@ const login = async (req, res) => {
         const { email, password } = req.body;
 
         // Buscar usuario y verificar que no esté borrado
-        const user = await User.findOne({ email, atDeleted: null });
+        const user = await User.findOne({ email, atDeleted: null })
+            .populate('flatsOwned');
+            
         if (!user) {
             return res.status(401).json({
                 success: false,
@@ -122,7 +131,9 @@ const login = async (req, res) => {
                     firstName: user.firstName,
                     lastName: user.lastName,
                     isAdmin: user.isAdmin,
-                    profileImage: user.profileImage
+                    profileImage: user.profileImage,
+                    flatsOwned: user.flatsOwned || [],
+                    totalFlats: user.flatsOwned?.length || 0
                 }
             }
         });
@@ -134,7 +145,6 @@ const login = async (req, res) => {
         });
     }
 };
-
 const changePassword = async (req, res) => {
     try {
         const { currentPassword, newPassword } = req.body;

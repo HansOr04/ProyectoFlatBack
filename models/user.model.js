@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import bcrypt from "bcrypt";
+import crypto from "crypto";
 
 const userSchema = new mongoose.Schema({
     email: { type: String, required: true, unique: true },
@@ -8,7 +9,6 @@ const userSchema = new mongoose.Schema({
     lastName: { type: String, required: true },
     birthDate: { type: Date, required: true },
     isAdmin: { type: Boolean, default: false },
-    // Campo actualizado para la imagen de perfil con Cloudinary
     profileImage: { 
         type: String, 
         default: "https://res.cloudinary.com/dzerzykxk/image/upload/v1/uploads/profiles/default/default-profile.jpg"
@@ -20,7 +20,10 @@ const userSchema = new mongoose.Schema({
     atCreated: { type: Date, default: Date.now },
     atUpdated: { type: Date, default: Date.now },
     favoriteFlats: [{ type: mongoose.Schema.Types.ObjectId, ref: "flats" }],
+    flatsOwned: [{ type: mongoose.Schema.Types.ObjectId, ref: "flats" }],
     atDeleted: { type: Date, default: null },
+    resetPasswordToken: String,
+    resetPasswordExpire: Date
 }, {
     toJSON: { virtuals: true },
     toObject: { virtuals: true }
@@ -75,6 +78,41 @@ userSchema.methods.updatePassword = async function(newPassword) {
     return this.save();
 };
 
+// Método para generar token de reseteo de contraseña
+userSchema.methods.generateResetToken = function() {
+    // Generar token
+    const resetToken = crypto.randomBytes(20).toString('hex');
+
+    // Hashear y guardar el token
+    this.resetPasswordToken = crypto
+        .createHash('sha256')
+        .update(resetToken)
+        .digest('hex');
+
+    // Establecer tiempo de expiración (10 minutos)
+    this.resetPasswordExpire = Date.now() + 10 * 60 * 1000;
+
+    return resetToken;
+};
+
+// Método para añadir un flat a flatsOwned
+userSchema.methods.addOwnedFlat = async function(flatId) {
+    if (!this.flatsOwned.includes(flatId)) {
+        this.flatsOwned.push(flatId);
+        this.atUpdated = new Date();
+        await this.save();
+    }
+    return this;
+};
+
+// Método para remover un flat de flatsOwned
+userSchema.methods.removeOwnedFlat = async function(flatId) {
+    this.flatsOwned = this.flatsOwned.filter(id => id.toString() !== flatId.toString());
+    this.atUpdated = new Date();
+    await this.save();
+    return this;
+};
+
 // Virtual para obtener el nombre completo
 userSchema.virtual('fullName').get(function() {
     return `${this.firstName} ${this.lastName}`;
@@ -96,7 +134,6 @@ userSchema.virtual('totalFlats', {
 // Método para soft delete
 userSchema.methods.softDelete = async function() {
     this.atDeleted = new Date();
-    // Restaurar imagen de perfil por defecto al eliminar
     await this.resetProfileImage();
     return this.save();
 };
@@ -104,5 +141,6 @@ userSchema.methods.softDelete = async function() {
 // Índices
 userSchema.index({ email: 1 });
 userSchema.index({ atDeleted: 1 });
+userSchema.index({ flatsOwned: 1 });
 
 export const User = mongoose.model("users", userSchema);
