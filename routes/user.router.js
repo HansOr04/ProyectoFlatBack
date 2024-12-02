@@ -1,4 +1,3 @@
-
 import express from 'express';
 import { 
     getUsers,
@@ -7,7 +6,8 @@ import {
     deleteUser,
     getFavorites,
     addToFavorites,
-    removeFromFavorites
+    removeFromFavorites,
+    getProfile
 } from '../controllers/user.controller.js';
 import { verifyToken } from '../middlewares/auth.middleware.js';
 import { isAdmin, isOwnerOrAdmin } from '../middlewares/authorization.middleware.js';
@@ -16,6 +16,12 @@ import { validateUserUpdate } from '../middlewares/validator.middleware.js';
 
 const router = express.Router();
 
+// Ruta para obtener el perfil del usuario actual
+router.get('/profile',
+    verifyToken,
+    getProfile
+);
+
 // Rutas que requieren ser administrador
 router.get('/',
     verifyToken,
@@ -23,13 +29,12 @@ router.get('/',
     getUsers
 );
 
-// Rutas para usuarios autenticados
+// Rutas para favoritos
 router.get('/favorites',
     verifyToken,
     getFavorites
 );
 
-// Nuevas rutas para gestión de favoritos
 router.post('/favorites/:flatId',
     verifyToken,
     addToFavorites

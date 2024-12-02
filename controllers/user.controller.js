@@ -1,68 +1,7 @@
 
 import { User } from "../models/user.model.js";
 import { deleteFromCloudinary } from "../configs/cloudinary.config.js";
-
-const getUsers = async (req, res) => {
-    try {
-        if (!req.user.isAdmin) {
-            return res.status(403).json({
-                success: false,
-                message: "Not authorized"
-            });
-        }
-
-        const users = await User.find({ atDeleted: null })
-            .select('-password')
-            .populate('favoriteFlats');
-
-        res.status(200).json({
-            success: true,
-            data: users
-        });
-    } catch (error) {
-        res.status(400).json({
-            success: false,
-            message: "Error fetching users",
-            error: error.message
-        });
-    }
-};
-
-const getUserById = async (req, res) => {
-    try {
-        const { id } = req.params;
-        
-        if (id !== req.user.id && !req.user.isAdmin) {
-            return res.status(403).json({
-                success: false,
-                message: "Not authorized"
-            });
-        }
-
-        const user = await User.findById(id)
-            .select('-password')
-            .populate('favoriteFlats');
-
-        if (!user || user.atDeleted) {
-            return res.status(404).json({
-                success: false,
-                message: "User not found"
-            });
-        }
-
-        res.status(200).json({
-            success: true,
-            data: user
-        });
-    } catch (error) {
-        res.status(400).json({
-            success: false,
-            message: "Error fetching user",
-            error: error.message
-        });
-    }
-};
-
+import { Flat } from "../models/flat.models.js";
 const updateUser = async (req, res) => {
     try {
         const { id } = req.params;
@@ -134,19 +73,47 @@ const updateUser = async (req, res) => {
         });
     }
 };
-
-const deleteUser = async (req, res) => {
+const getUsers = async (req, res) => {
     try {
-        const { id } = req.params;
-
-        if (id !== req.user.id && !req.user.isAdmin) {
+        if (!req.user.isAdmin) {
             return res.status(403).json({
                 success: false,
                 message: "Not authorized"
             });
         }
 
-        const user = await User.findById(id);
+        const users = await User.find({ atDeleted: null })
+            .select('-password')
+            .populate('favoriteFlats')
+            .populate('flatsOwned');
+
+        const usersWithCounts = users.map(user => ({
+            ...user.toObject(),
+            totalFlats: user.flatsOwned.length
+        }));
+
+        res.status(200).json({
+            success: true,
+            data: usersWithCounts
+        });
+    } catch (error) {
+        res.status(400).json({
+            success: false,
+            message: "Error fetching users",
+            error: error.message
+        });
+    }
+};
+
+const getProfile = async (req, res) => {
+    try {
+        const userId = req.user.id;
+
+        const user = await User.findById(userId)
+            .select('-password')
+            .populate('favoriteFlats')
+            .populate('flatsOwned');
+
         if (!user || user.atDeleted) {
             return res.status(404).json({
                 success: false,
@@ -154,32 +121,61 @@ const deleteUser = async (req, res) => {
             });
         }
 
-        // Eliminar imagen de perfil si existe y no es la imagen por defecto
-        if (user.profileImageId && 
-            user.profileImageId !== "uploads/profiles/default/default-profile") {
-            await deleteFromCloudinary(user.profileImageId);
-        }
-
-        // Realizar borrado lógico
-        user.atDeleted = new Date();
-        user.profileImage = "https://res.cloudinary.com/dzerzykxk/image/upload/v1/uploads/profiles/default/default-profile.jpg";
-        user.profileImageId = "uploads/profiles/default/default-profile";
-        await user.save();
+        const userData = user.toObject();
+        userData.totalFlats = user.flatsOwned.length;
 
         res.status(200).json({
             success: true,
-            message: "User deleted successfully"
+            data: userData
         });
     } catch (error) {
         res.status(400).json({
             success: false,
-            message: "Error deleting user",
+            message: "Error fetching profile",
             error: error.message
         });
     }
 };
 
-// Las funciones de favoritos se mantienen igual ya que no manejan archivos
+const getUserById = async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        if (id !== req.user.id && !req.user.isAdmin) {
+            return res.status(403).json({
+                success: false,
+                message: "Not authorized"
+            });
+        }
+
+        const user = await User.findById(id)
+            .select('-password')
+            .populate('favoriteFlats')
+            .populate('flatsOwned');
+
+        if (!user || user.atDeleted) {
+            return res.status(404).json({
+                success: false,
+                message: "User not found"
+            });
+        }
+
+        const userData = user.toObject();
+        userData.totalFlats = user.flatsOwned.length;
+
+        res.status(200).json({
+            success: true,
+            data: userData
+        });
+    } catch (error) {
+        res.status(400).json({
+            success: false,
+            message: "Error fetching user",
+            error: error.message
+        });
+    }
+};
+
 const getFavorites = async (req, res) => {
     try {
         const userId = req.user.id;
@@ -275,6 +271,56 @@ const removeFromFavorites = async (req, res) => {
     }
 };
 
+const deleteUser = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        if (id !== req.user.id && !req.user.isAdmin) {
+            return res.status(403).json({
+                success: false,
+                message: "Not authorized"
+            });
+        }
+
+        const user = await User.findById(id);
+        if (!user || user.atDeleted) {
+            return res.status(404).json({
+                success: false,
+                message: "User not found"
+            });
+        }
+
+        // Eliminar imagen de perfil si existe y no es la imagen por defecto
+        if (user.profileImageId && 
+            user.profileImageId !== "uploads/profiles/default/default-profile") {
+            await deleteFromCloudinary(user.profileImageId);
+        }
+
+        // Actualizar el estado de los flats asociados
+        await Flat.updateMany(
+            { _id: { $in: user.flatsOwned } },
+            { $set: { atDeleted: new Date() } }
+        );
+
+        // Realizar borrado lógico
+        user.atDeleted = new Date();
+        user.profileImage = "https://res.cloudinary.com/dzerzykxk/image/upload/v1/uploads/profiles/default/default-profile.jpg";
+        user.profileImageId = "uploads/profiles/default/default-profile";
+        await user.save();
+
+        res.status(200).json({
+            success: true,
+            message: "User and associated flats deleted successfully"
+        });
+    } catch (error) {
+        res.status(400).json({
+            success: false,
+            message: "Error deleting user",
+            error: error.message
+        });
+    }
+};
+
 export {
     getUsers,
     getUserById,
@@ -282,5 +328,6 @@ export {
     deleteUser,
     getFavorites,
     addToFavorites,
-    removeFromFavorites
+    removeFromFavorites,
+    getProfile
 };
