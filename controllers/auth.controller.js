@@ -3,7 +3,7 @@ import jwt from "jsonwebtoken";
 import { deleteFromCloudinary } from "../configs/cloudinary.config.js";
 import sendEmail from "../utils/email.js";
 import crypto from "crypto";
-import { Flat } from "../models/flat.models.js"; // Añadir esta importación
+import { Flat } from "../models/flat.models.js"; 
 const register = async (req, res) => {
     try {
         const { email, password, firstName, lastName, birthDate } = req.body;
