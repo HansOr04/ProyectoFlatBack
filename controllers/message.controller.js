@@ -377,10 +377,55 @@ const toggleMessageVisibility = async (req, res) => {
         });
     }
 };
+const getMessages = async (req, res) => {
+    try {
+        const messages = await Message.find();
+        res.status(200).json({
+            success: true,
+            data: messages
+        });
+    } catch (error) {
+        res.status(400).json({
+            success: false,
+            message: "Error fetching reviews",
+            error: error.message
+        });
+    }
+};
+const getMessagesByUser = async (req, res) => {
+    try {
+        const { userID } = req.params;
+        
+        if (!mongoose.Types.ObjectId.isValid(userID)) {
+            return res.status(400).json({
+                success: false,
+                message: "ID de usuario inválido"
+            });
+        }
 
+        const messages = await Message.find({ author: userID })
+            .populate('flatID', 'name') // Ajusta los campos a poblar según necesites
+            .populate('author', 'name')
+            .populate('parentMessage')
+            .sort({ atCreated: -1 }); // Ordenados del más reciente al más antiguo
+        
+        return res.status(200).json({
+            success: true,
+            data: messages
+        });
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: "Error al obtener los mensajes",
+            error: error.message
+        });
+    }
+};
 export {
     createMessage,
+    getMessages,
     getMessagesByFlat,
+    getMessagesByUser,
     updateMessage,
     deleteMessage,
     replyToMessage,

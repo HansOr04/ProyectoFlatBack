@@ -5,7 +5,9 @@ import {
     updateMessage,
     deleteMessage,
     replyToMessage,
-    toggleMessageVisibility
+    toggleMessageVisibility,
+    getMessages,
+    getMessagesByUser
 } from '../controllers/message.controller.js';
 import { verifyToken } from '../middlewares/auth.middleware.js';
 import { isAdmin } from '../middlewares/authorization.middleware.js';
@@ -13,6 +15,7 @@ import { upload } from '../middlewares/upload.middleware.js';
 import { validateMessage, validateRating } from '../middlewares/validator.middleware.js';
 
 const router = express.Router();
+router.get('/', getMessages);
 
 // Rutas públicas
 router.get('/flat/:flatID', getMessagesByFlat); // Obtener comentarios y calificaciones de un flat
@@ -25,6 +28,7 @@ router.post('/flat/:flatID',
     validateRating, // Nuevo middleware para validar calificaciones
     createMessage
 );
+router.get('/user/:userID', getMessagesByUser);
 
 router.post('/:id/reply',
     verifyToken,
