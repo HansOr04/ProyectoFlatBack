@@ -1,107 +1,125 @@
-import { Flat } from "../models/flat.models.js";
+
+ import { Flat } from "../models/flat.models.js";
 import { Message } from "../models/message.model.js";
 import { User } from "../models/user.model.js";
 import { deleteFromCloudinary } from "../configs/cloudinary.config.js";
-
 const createFlat = async (req, res) => {
-   try {
-       const owner = req.user.id;
-       
-       // Validar que se envíen imágenes
-       if (!req.files || req.files.length === 0) {
-           return res.status(400).json({
-               success: false,
-               message: "At least one image is required"
-           });
-       }
+    try {
+        const owner = req.user.id;
+        
+        // Validar que se envíen imágenes
+        if (!req.files || req.files.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: "At least one image is required"
+            });
+        }
 
-       // Procesar las imágenes
-       let images = req.files.map((file, index) => ({
-           url: file.cloudinary.url,
-           public_id: file.cloudinary.public_id,
-           description: file.originalname,
-           isMainImage: index === 0
-       }));
+        // Procesar las imágenes
+        let images = req.files.map((file, index) => ({
+            url: file.cloudinary.url,
+            public_id: file.cloudinary.public_id,
+            description: file.originalname,
+            isMainImage: index === 0
+        }));
 
-       // Crear el objeto de datos del departamento
-       const flatData = {
-           ...req.body,
-           owner,
-           images,
-           ratings: {
-               overall: 0,
-               aspects: {
-                   cleanliness: 0,
-                   communication: 0,
-                   location: 0,
-                   accuracy: 0,
-                   value: 0
-               },
-               totalReviews: 0
-           }
-       };
+        // Parsear los campos JSON
+        const amenities = req.body.amenities ? JSON.parse(req.body.amenities) : {};
+        const houseRules = req.body.houseRules ? JSON.parse(req.body.houseRules) : {};
+        const location = req.body.location ? JSON.parse(req.body.location) : {};
+        const availability = req.body.availability ? JSON.parse(req.body.availability) : {};
 
-       // Procesar campos booleanos de amenities
-       if (flatData.amenities) {
-           const booleanFields = [
-               'wifi', 'tv', 'kitchen', 'washer', 'airConditioning', 
-               'heating', 'workspace', 'pool', 'gym', 'elevator', 
-               'petsAllowed', 'smokeAlarm', 'firstAidKit', 
-               'fireExtinguisher', 'securityCameras'
-           ];
+        // Crear el objeto de datos del departamento
+        const flatData = {
+            title: req.body.title,
+            description: req.body.description,
+            propertyType: req.body.propertyType,
+            city: req.body.city,
+            streetName: req.body.streetName,
+            streetNumber: req.body.streetNumber,
+            areaSize: Number(req.body.areaSize),
+            yearBuilt: Number(req.body.yearBuilt),
+            rentPrice: Number(req.body.rentPrice),
+            dateAvailable: req.body.dateAvailable,
+            bedrooms: Number(req.body.bedrooms),
+            bathrooms: Number(req.body.bathrooms),
+            maxGuests: Number(req.body.maxGuests),
+            owner,
+            images,
+            // Añadir los objetos parseados
+            amenities,
+            houseRules,
+            location,
+            availability,
+            ratings: {
+                overall: 0,
+                aspects: {
+                    cleanliness: 0,
+                    communication: 0,
+                    location: 0,
+                    accuracy: 0,
+                    value: 0
+                },
+                totalReviews: 0
+            }
+        };
 
-           booleanFields.forEach(field => {
-               if (flatData.amenities[field] !== undefined) {
-                   flatData.amenities[field] = flatData.amenities[field] === true || 
-                                             flatData.amenities[field] === 'true';
-               }
-           });
+        // Procesar campos booleanos de amenities
+        if (flatData.amenities) {
+            const booleanFields = [
+                'wifi', 'tv', 'kitchen', 'washer', 'airConditioning', 
+                'heating', 'workspace', 'pool', 'gym', 'elevator', 
+                'petsAllowed', 'smokeAlarm', 'firstAidKit', 
+                'fireExtinguisher', 'securityCameras'
+            ];
 
-           if (flatData.amenities.parking) {
-               flatData.amenities.parking.available = 
-                   flatData.amenities.parking.available === true || 
-                   flatData.amenities.parking.available === 'true';
-           }
-       }
+            booleanFields.forEach(field => {
+                if (flatData.amenities[field] !== undefined) {
+                    flatData.amenities[field] = flatData.amenities[field] === true || 
+                                              flatData.amenities[field] === 'true';
+                }
+            });
 
-       const flat = new Flat(flatData);
-       await flat.save();
+            if (flatData.amenities.parking) {
+                flatData.amenities.parking.available = 
+                    flatData.amenities.parking.available === true || 
+                    flatData.amenities.parking.available === 'true';
+            }
+        }
 
-       // Actualizar el array flatsOwned del usuario
-       await User.findByIdAndUpdate(
-           owner,
-           { 
-               $push: { flatsOwned: flat._id },
-               $set: { atUpdated: Date.now() }
-           }
-       );
+        const flat = new Flat(flatData);
+        await flat.save();
+        await User.findByIdAndUpdate(
+            owner,
+            { $push: { flatsOwned: flat._id } }
+        );
 
-       await flat.populate('owner', 'firstName lastName email');
+        await flat.populate('owner', 'firstName lastName email');
 
-       res.status(201).json({
-           success: true,
-           message: "Flat created successfully",
-           data: flat
-       });
-   } catch (error) {
-       if (req.files) {
-           for (const file of req.files) {
-               try {
-                   await deleteFromCloudinary(file.cloudinary.public_id);
-               } catch (deleteError) {
-                   console.error('Error deleting file:', deleteError);
-               }
-           }
-       }
+        res.status(201).json({
+            success: true,
+            message: "Flat created successfully",
+            data: flat
+        });
+    } catch (error) {
+        console.error('Error completo:', error);
+        if (req.files) {
+            for (const file of req.files) {
+                try {
+                    await deleteFromCloudinary(file.cloudinary.public_id);
+                } catch (deleteError) {
+                    console.error('Error deleting file:', deleteError);
+                }
+            }
+        }
 
-       res.status(400).json({
-           success: false,
-           message: "Error creating flat",
-           error: error.message
-       });
-   }
+        res.status(400).json({
+            success: false,
+            message: "Error creating flat",
+            error: error.message
+        });
+    }
 };
-
 const getFlats = async (req, res) => {
    try {
        const {
