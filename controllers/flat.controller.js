@@ -272,89 +272,137 @@ const getFlatById = async (req, res) => {
 };
 
 const updateFlat = async (req, res) => {
-   try {
-       const flat = await Flat.findById(req.params.id);
-       
-       if (!flat) {
-           if (req.files) {
-               await Promise.all(
-                   req.files.map(file => deleteFromCloudinary(file.cloudinary.public_id))
-               );
-           }
-           return res.status(404).json({
-               success: false,
-               message: "Flat not found"
-           });
-       }
+    try {
+        const flat = await Flat.findById(req.params.id);
+        
+        if (!flat) {
+            if (req.files) {
+                await Promise.all(
+                    req.files.map(file => deleteFromCloudinary(file.cloudinary.public_id))
+                );
+            }
+            return res.status(404).json({
+                success: false,
+                message: "Flat not found"
+            });
+        }
 
-       if (flat.owner.toString() !== req.user.id && !req.user.isAdmin) {
-           if (req.files) {
-               await Promise.all(
-                   req.files.map(file => deleteFromCloudinary(file.cloudinary.public_id))
-               );
-           }
-           return res.status(403).json({
-               success: false,
-               message: "Not authorized to update this flat"
-           });
-       }
+        if (flat.owner.toString() !== req.user.id && !req.user.isAdmin) {
+            if (req.files) {
+                await Promise.all(
+                    req.files.map(file => deleteFromCloudinary(file.cloudinary.public_id))
+                );
+            }
+            return res.status(403).json({
+                success: false,
+                message: "Not authorized to update this flat"
+            });
+        }
 
-       // Procesar los datos de actualización
-       const updateData = { ...req.body };
+        // Parsear los campos JSON del body
+        const updateData = {
+            ...req.body,
+            amenities: req.body.amenities ? JSON.parse(req.body.amenities) : undefined,
+            houseRules: req.body.houseRules ? JSON.parse(req.body.houseRules) : undefined,
+            location: req.body.location ? JSON.parse(req.body.location) : undefined,
+            availability: req.body.availability ? JSON.parse(req.body.availability) : undefined
+        };
 
-       // Procesar campos booleanos si existen
-       if (updateData.amenities) {
-           const booleanFields = [
-               'wifi', 'tv', 'kitchen', 'washer', 'airConditioning', 
-               'heating', 'workspace', 'pool', 'gym', 'elevator', 
-               'petsAllowed', 'smokeAlarm', 'firstAidKit', 
-               'fireExtinguisher', 'securityCameras'
-           ];
+        // Procesar campos booleanos de amenities si existen
+        if (updateData.amenities) {
+            const booleanFields = [
+                'wifi', 'tv', 'kitchen', 'washer', 'airConditioning', 
+                'heating', 'workspace', 'pool', 'gym', 'elevator', 
+                'petsAllowed', 'smokeAlarm', 'firstAidKit', 
+                'fireExtinguisher', 'securityCameras'
+            ];
 
-           booleanFields.forEach(field => {
-               if (updateData.amenities[field] !== undefined) {
-                   updateData.amenities[field] = updateData.amenities[field] === true || 
-                                               updateData.amenities[field] === 'true';
-               }
-           });
-       }
+            booleanFields.forEach(field => {
+                if (updateData.amenities[field] !== undefined) {
+                    updateData.amenities[field] = updateData.amenities[field] === true || 
+                                                updateData.amenities[field] === 'true';
+                }
+            });
 
-       // Procesar imágenes nuevas si existen
-       if (req.files && req.files.length > 0) {
-           const newImages = req.files.map(file => ({
-               url: file.cloudinary.url,
-               public_id: file.cloudinary.public_id,
-               description: file.originalname
-           }));
-           updateData.images = [...flat.images, ...newImages];
-       }
+            // Procesar parking específicamente
+            if (updateData.amenities.parking) {
+                updateData.amenities.parking.available = 
+                    updateData.amenities.parking.available === true || 
+                    updateData.amenities.parking.available === 'true';
+            }
+        }
 
-       const updatedFlat = await Flat.findByIdAndUpdate(
-           req.params.id,
-           { 
-               ...updateData,
-               atUpdated: Date.now()
-           },
-           { new: true }
-       ).populate('owner', 'firstName lastName email');
+        // Manejar imágenes a eliminar
+        const imagesToDelete = req.body.imagesToDelete ? JSON.parse(req.body.imagesToDelete) : [];
+        if (imagesToDelete.length > 0) {
+            // Encontrar las imágenes a eliminar
+            const imagesToRemove = flat.images.filter(img => imagesToDelete.includes(img._id.toString()));
+            
+            // Eliminar de Cloudinary
+            await Promise.all(
+                imagesToRemove.map(img => deleteFromCloudinary(img.public_id))
+            );
 
-       res.status(200).json({
-           success: true,
-           message: "Flat updated successfully",
-           data: updatedFlat
-       });
-   } catch (error) {
-       if (req.files) {
-           await Promise.all(
-               req.files.map(file => deleteFromCloudinary(file.cloudinary.public_id))
-           );
-       }
-       res.status(400).json({
-           success: false,
-           message: "Error updating flat",
-           error: error.message
-       });
-   }
+            // Filtrar las imágenes que se mantendrán
+            updateData.images = flat.images.filter(img => !imagesToDelete.includes(img._id.toString()));
+        }
+
+        // Procesar nuevas imágenes si existen
+        if (req.files && req.files.length > 0) {
+            const newImages = req.files.map(file => ({
+                url: file.cloudinary.url,
+                public_id: file.cloudinary.public_id,
+                description: file.originalname,
+                isMainImage: false
+            }));
+
+            // Si hay imágenes existentes, añadir las nuevas
+            if (updateData.images) {
+                updateData.images = [...updateData.images, ...newImages];
+            } else if (imagesToDelete.length > 0) {
+                // Si solo teníamos las imágenes filtradas
+                updateData.images = [...flat.images.filter(img => !imagesToDelete.includes(img._id.toString())), ...newImages];
+            } else {
+                // Si no hay imágenes previas ni eliminaciones
+                updateData.images = [...flat.images, ...newImages];
+            }
+        }
+
+        // Convertir campos numéricos
+        const numericFields = ['areaSize', 'yearBuilt', 'rentPrice', 'bedrooms', 'bathrooms', 'maxGuests'];
+        numericFields.forEach(field => {
+            if (updateData[field]) {
+                updateData[field] = Number(updateData[field]);
+            }
+        });
+
+        const updatedFlat = await Flat.findByIdAndUpdate(
+            req.params.id,
+            { 
+                ...updateData,
+                atUpdated: Date.now()
+            },
+            { new: true }
+        ).populate('owner', 'firstName lastName email');
+
+        res.status(200).json({
+            success: true,
+            message: "Flat updated successfully",
+            data: updatedFlat
+        });
+    } catch (error) {
+        // Limpiar imágenes subidas en caso de error
+        if (req.files) {
+            await Promise.all(
+                req.files.map(file => deleteFromCloudinary(file.cloudinary.public_id))
+            );
+        }
+        res.status(400).json({
+            success: false,
+            message: "Error updating flat",
+            error: error.message
+        });
+    }
 };
 
 const deleteFlat = async (req, res) => {
