@@ -1,209 +1,233 @@
-import { Flat } from "../models/flat.models.js";
+
+ import { Flat } from "../models/flat.models.js";
 import { Message } from "../models/message.model.js";
 import { User } from "../models/user.model.js";
 import { deleteFromCloudinary } from "../configs/cloudinary.config.js";
-
 const createFlat = async (req, res) => {
-   try {
-       const owner = req.user.id;
-       
-       // Validar que se envíen imágenes
-       if (!req.files || req.files.length === 0) {
-           return res.status(400).json({
-               success: false,
-               message: "At least one image is required"
-           });
-       }
+    try {
+        const owner = req.user.id;
+        
+        // Validar que se envíen imágenes
+        if (!req.files || req.files.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: "At least one image is required"
+            });
+        }
 
-       // Procesar las imágenes
-       let images = req.files.map((file, index) => ({
-           url: file.cloudinary.url,
-           public_id: file.cloudinary.public_id,
-           description: file.originalname,
-           isMainImage: index === 0
-       }));
+        // Procesar las imágenes
+        let images = req.files.map((file, index) => ({
+            url: file.cloudinary.url,
+            public_id: file.cloudinary.public_id,
+            description: file.originalname,
+            isMainImage: index === 0
+        }));
 
-       // Crear el objeto de datos del departamento
-       const flatData = {
-           ...req.body,
-           owner,
-           images,
-           ratings: {
-               overall: 0,
-               aspects: {
-                   cleanliness: 0,
-                   communication: 0,
-                   location: 0,
-                   accuracy: 0,
-                   value: 0
-               },
-               totalReviews: 0
-           }
-       };
+        // Parsear los campos JSON
+        const amenities = req.body.amenities ? JSON.parse(req.body.amenities) : {};
+        const houseRules = req.body.houseRules ? JSON.parse(req.body.houseRules) : {};
+        const location = req.body.location ? JSON.parse(req.body.location) : {};
+        const availability = req.body.availability ? JSON.parse(req.body.availability) : {};
 
-       // Procesar campos booleanos de amenities
-       if (flatData.amenities) {
-           const booleanFields = [
-               'wifi', 'tv', 'kitchen', 'washer', 'airConditioning', 
-               'heating', 'workspace', 'pool', 'gym', 'elevator', 
-               'petsAllowed', 'smokeAlarm', 'firstAidKit', 
-               'fireExtinguisher', 'securityCameras'
-           ];
+        // Crear el objeto de datos del departamento
+        const flatData = {
+            title: req.body.title,
+            description: req.body.description,
+            propertyType: req.body.propertyType,
+            city: req.body.city,
+            streetName: req.body.streetName,
+            streetNumber: req.body.streetNumber,
+            areaSize: Number(req.body.areaSize),
+            yearBuilt: Number(req.body.yearBuilt),
+            rentPrice: Number(req.body.rentPrice),
+            dateAvailable: req.body.dateAvailable,
+            bedrooms: Number(req.body.bedrooms),
+            bathrooms: Number(req.body.bathrooms),
+            maxGuests: Number(req.body.maxGuests),
+            owner,
+            images,
+            // Añadir los objetos parseados
+            amenities,
+            houseRules,
+            location,
+            availability,
+            ratings: {
+                overall: 0,
+                aspects: {
+                    cleanliness: 0,
+                    communication: 0,
+                    location: 0,
+                    accuracy: 0,
+                    value: 0
+                },
+                totalReviews: 0
+            }
+        };
 
-           booleanFields.forEach(field => {
-               if (flatData.amenities[field] !== undefined) {
-                   flatData.amenities[field] = flatData.amenities[field] === true || 
-                                             flatData.amenities[field] === 'true';
-               }
-           });
+        // Procesar campos booleanos de amenities
+        if (flatData.amenities) {
+            const booleanFields = [
+                'wifi', 'tv', 'kitchen', 'washer', 'airConditioning', 
+                'heating', 'workspace', 'pool', 'gym', 'elevator', 
+                'petsAllowed', 'smokeAlarm', 'firstAidKit', 
+                'fireExtinguisher', 'securityCameras'
+            ];
 
-           if (flatData.amenities.parking) {
-               flatData.amenities.parking.available = 
-                   flatData.amenities.parking.available === true || 
-                   flatData.amenities.parking.available === 'true';
-           }
-       }
+            booleanFields.forEach(field => {
+                if (flatData.amenities[field] !== undefined) {
+                    flatData.amenities[field] = flatData.amenities[field] === true || 
+                                              flatData.amenities[field] === 'true';
+                }
+            });
 
-       const flat = new Flat(flatData);
-       await flat.save();
+            if (flatData.amenities.parking) {
+                flatData.amenities.parking.available = 
+                    flatData.amenities.parking.available === true || 
+                    flatData.amenities.parking.available === 'true';
+            }
+        }
 
-       // Actualizar el array flatsOwned del usuario
-       await User.findByIdAndUpdate(
-           owner,
-           { 
-               $push: { flatsOwned: flat._id },
-               $set: { atUpdated: Date.now() }
-           }
-       );
+        const flat = new Flat(flatData);
+        await flat.save();
+        await User.findByIdAndUpdate(
+            owner,
+            { $push: { flatsOwned: flat._id } }
+        );
 
-       await flat.populate('owner', 'firstName lastName email');
+        await flat.populate('owner', 'firstName lastName email');
 
-       res.status(201).json({
-           success: true,
-           message: "Flat created successfully",
-           data: flat
-       });
-   } catch (error) {
-       if (req.files) {
-           for (const file of req.files) {
-               try {
-                   await deleteFromCloudinary(file.cloudinary.public_id);
-               } catch (deleteError) {
-                   console.error('Error deleting file:', deleteError);
-               }
-           }
-       }
+        res.status(201).json({
+            success: true,
+            message: "Flat created successfully",
+            data: flat
+        });
+    } catch (error) {
+        console.error('Error completo:', error);
+        if (req.files) {
+            for (const file of req.files) {
+                try {
+                    await deleteFromCloudinary(file.cloudinary.public_id);
+                } catch (deleteError) {
+                    console.error('Error deleting file:', deleteError);
+                }
+            }
+        }
 
-       res.status(400).json({
-           success: false,
-           message: "Error creating flat",
-           error: error.message
-       });
-   }
+        res.status(400).json({
+            success: false,
+            message: "Error creating flat",
+            error: error.message
+        });
+    }
 };
-
 const getFlats = async (req, res) => {
-   try {
-       const {
-           page = 1,
-           limit = 10,
-           city,
-           minPrice,
-           maxPrice,
-           propertyType,
-           bedrooms,
-           bathrooms,
-           minArea,
-           maxArea,
-           amenities,
-           parking,
-           petsAllowed,
-           available,
-           minRating,
-           sortBy,
-           order = 'desc'
-       } = req.query;
-
-       const filters = {};
-
-       // Filtros básicos
-       if (city) filters.city = new RegExp(city, 'i');
-       if (minPrice) filters.rentPrice = { $gte: Number(minPrice) };
-       if (maxPrice) filters.rentPrice = { ...filters.rentPrice, $lte: Number(maxPrice) };
-       if (propertyType) filters.propertyType = propertyType;
-       if (bedrooms) filters.bedrooms = Number(bedrooms);
-       if (bathrooms) filters.bathrooms = Number(bathrooms);
-       if (minArea) filters.areaSize = { $gte: Number(minArea) };
-       if (maxArea) filters.areaSize = { ...filters.areaSize, $lte: Number(maxArea) };
-       if (available === 'true') filters.dateAvailable = { $lte: new Date() };
-       if (minRating) filters['ratings.overall'] = { $gte: Number(minRating) };
-
-       // Filtros de amenidades
-       if (amenities) {
-           const amenityList = amenities.split(',');
-           amenityList.forEach(amenity => {
-               filters[`amenities.${amenity}`] = true;
-           });
-       }
-
-       // Filtro de estacionamiento
-       if (parking) {
-           filters['amenities.parking.available'] = true;
-           if (parking !== 'any') {
-               filters['amenities.parking.type'] = parking;
-           }
-       }
-
-       // Filtro de mascotas
-       if (petsAllowed === 'true') {
-           filters['amenities.petsAllowed'] = true;
-       }
-
-       const skip = (page - 1) * limit;
-
-       // Configuración de ordenamiento
-       let sortOptions = {};
-       switch (sortBy) {
-           case 'price':
-               sortOptions.rentPrice = order === 'desc' ? -1 : 1;
-               break;
-           case 'rating':
-               sortOptions['ratings.overall'] = order === 'desc' ? -1 : 1;
-               break;
-           case 'date':
-               sortOptions.atCreated = order === 'desc' ? -1 : 1;
-               break;
-           default:
-               sortOptions.atCreated = -1;
-       }
-
-       const [flats, total] = await Promise.all([
-           Flat.find(filters)
-               .populate('owner', 'firstName lastName email')
-               .skip(skip)
-               .limit(parseInt(limit))
-               .sort(sortOptions),
-           Flat.countDocuments(filters)
-       ]);
-
-       res.status(200).json({
-           success: true,
-           data: flats,
-           pagination: {
-               total,
-               pages: Math.ceil(total / limit),
-               currentPage: parseInt(page),
-               perPage: parseInt(limit)
-           }
-       });
-   } catch (error) {
-       res.status(400).json({
-           success: false,
-           message: "Error fetching flats",
-           error: error.message
-       });
-   }
-};
+    try {
+        const {
+            owner,
+            page = 1,
+            limit = 10,
+            city,
+            minPrice,
+            maxPrice,
+            propertyType,
+            bedrooms,
+            bathrooms,
+            minArea,
+            maxArea,
+            amenities,
+            parking,
+            petsAllowed,
+            available,
+            minRating,
+            sortBy,
+            order = 'desc'
+        } = req.query;
+ 
+        const filters = {};
+ 
+        // Filtro de propietario
+        if (owner === 'true' && req.user) {
+            filters.owner = req.user.id;
+        }
+ 
+        // Filtros básicos
+        if (city) filters.city = new RegExp(city, 'i');
+        if (minPrice) filters.rentPrice = { $gte: Number(minPrice) };
+        if (maxPrice) filters.rentPrice = { ...filters.rentPrice, $lte: Number(maxPrice) };
+        if (propertyType) filters.propertyType = propertyType;
+        if (bedrooms) filters.bedrooms = Number(bedrooms);
+        if (bathrooms) filters.bathrooms = Number(bathrooms);
+        if (minArea) filters.areaSize = { $gte: Number(minArea) };
+        if (maxArea) filters.areaSize = { ...filters.areaSize, $lte: Number(maxArea) };
+        if (available === 'true') filters.dateAvailable = { $lte: new Date() };
+        if (minRating) filters['ratings.overall'] = { $gte: Number(minRating) };
+ 
+        // Filtros de amenidades
+        if (amenities) {
+            const amenityList = amenities.split(',');
+            amenityList.forEach(amenity => {
+                filters[`amenities.${amenity}`] = true;
+            });
+        }
+ 
+        // Filtro de estacionamiento
+        if (parking) {
+            filters['amenities.parking.available'] = true;
+            if (parking !== 'any') {
+                filters['amenities.parking.type'] = parking;
+            }
+        }
+ 
+        // Filtro de mascotas
+        if (petsAllowed === 'true') {
+            filters['amenities.petsAllowed'] = true;
+        }
+ 
+        const skip = (page - 1) * limit;
+ 
+        // Configuración de ordenamiento
+        let sortOptions = {};
+        switch (sortBy) {
+            case 'price':
+                sortOptions.rentPrice = order === 'desc' ? -1 : 1;
+                break;
+            case 'rating':
+                sortOptions['ratings.overall'] = order === 'desc' ? -1 : 1;
+                break;
+            case 'date':
+                sortOptions.atCreated = order === 'desc' ? -1 : 1;
+                break;
+            default:
+                sortOptions.atCreated = -1;
+        }
+ 
+        const [flats, total] = await Promise.all([
+            Flat.find(filters)
+                .populate('owner', 'firstName lastName email')
+                .skip(skip)
+                .limit(parseInt(limit))
+                .sort(sortOptions),
+            Flat.countDocuments(filters)
+        ]);
+ 
+        res.status(200).json({
+            success: true,
+            data: flats,
+            pagination: {
+                total,
+                pages: Math.ceil(total / limit),
+                currentPage: parseInt(page),
+                perPage: parseInt(limit)
+            }
+        });
+    } catch (error) {
+        res.status(400).json({
+            success: false,
+            message: "Error fetching flats",
+            error: error.message
+        });
+    }
+ };
 
 const getFlatById = async (req, res) => {
    try {
@@ -254,89 +278,137 @@ const getFlatById = async (req, res) => {
 };
 
 const updateFlat = async (req, res) => {
-   try {
-       const flat = await Flat.findById(req.params.id);
-       
-       if (!flat) {
-           if (req.files) {
-               await Promise.all(
-                   req.files.map(file => deleteFromCloudinary(file.cloudinary.public_id))
-               );
-           }
-           return res.status(404).json({
-               success: false,
-               message: "Flat not found"
-           });
-       }
+    try {
+        const flat = await Flat.findById(req.params.id);
+        
+        if (!flat) {
+            if (req.files) {
+                await Promise.all(
+                    req.files.map(file => deleteFromCloudinary(file.cloudinary.public_id))
+                );
+            }
+            return res.status(404).json({
+                success: false,
+                message: "Flat not found"
+            });
+        }
 
-       if (flat.owner.toString() !== req.user.id && !req.user.isAdmin) {
-           if (req.files) {
-               await Promise.all(
-                   req.files.map(file => deleteFromCloudinary(file.cloudinary.public_id))
-               );
-           }
-           return res.status(403).json({
-               success: false,
-               message: "Not authorized to update this flat"
-           });
-       }
+        if (flat.owner.toString() !== req.user.id && !req.user.isAdmin) {
+            if (req.files) {
+                await Promise.all(
+                    req.files.map(file => deleteFromCloudinary(file.cloudinary.public_id))
+                );
+            }
+            return res.status(403).json({
+                success: false,
+                message: "Not authorized to update this flat"
+            });
+        }
 
-       // Procesar los datos de actualización
-       const updateData = { ...req.body };
+        // Parsear los campos JSON del body
+        const updateData = {
+            ...req.body,
+            amenities: req.body.amenities ? JSON.parse(req.body.amenities) : undefined,
+            houseRules: req.body.houseRules ? JSON.parse(req.body.houseRules) : undefined,
+            location: req.body.location ? JSON.parse(req.body.location) : undefined,
+            availability: req.body.availability ? JSON.parse(req.body.availability) : undefined
+        };
 
-       // Procesar campos booleanos si existen
-       if (updateData.amenities) {
-           const booleanFields = [
-               'wifi', 'tv', 'kitchen', 'washer', 'airConditioning', 
-               'heating', 'workspace', 'pool', 'gym', 'elevator', 
-               'petsAllowed', 'smokeAlarm', 'firstAidKit', 
-               'fireExtinguisher', 'securityCameras'
-           ];
+        // Procesar campos booleanos de amenities si existen
+        if (updateData.amenities) {
+            const booleanFields = [
+                'wifi', 'tv', 'kitchen', 'washer', 'airConditioning', 
+                'heating', 'workspace', 'pool', 'gym', 'elevator', 
+                'petsAllowed', 'smokeAlarm', 'firstAidKit', 
+                'fireExtinguisher', 'securityCameras'
+            ];
 
-           booleanFields.forEach(field => {
-               if (updateData.amenities[field] !== undefined) {
-                   updateData.amenities[field] = updateData.amenities[field] === true || 
-                                               updateData.amenities[field] === 'true';
-               }
-           });
-       }
+            booleanFields.forEach(field => {
+                if (updateData.amenities[field] !== undefined) {
+                    updateData.amenities[field] = updateData.amenities[field] === true || 
+                                                updateData.amenities[field] === 'true';
+                }
+            });
 
-       // Procesar imágenes nuevas si existen
-       if (req.files && req.files.length > 0) {
-           const newImages = req.files.map(file => ({
-               url: file.cloudinary.url,
-               public_id: file.cloudinary.public_id,
-               description: file.originalname
-           }));
-           updateData.images = [...flat.images, ...newImages];
-       }
+            // Procesar parking específicamente
+            if (updateData.amenities.parking) {
+                updateData.amenities.parking.available = 
+                    updateData.amenities.parking.available === true || 
+                    updateData.amenities.parking.available === 'true';
+            }
+        }
 
-       const updatedFlat = await Flat.findByIdAndUpdate(
-           req.params.id,
-           { 
-               ...updateData,
-               atUpdated: Date.now()
-           },
-           { new: true }
-       ).populate('owner', 'firstName lastName email');
+        // Manejar imágenes a eliminar
+        const imagesToDelete = req.body.imagesToDelete ? JSON.parse(req.body.imagesToDelete) : [];
+        if (imagesToDelete.length > 0) {
+            // Encontrar las imágenes a eliminar
+            const imagesToRemove = flat.images.filter(img => imagesToDelete.includes(img._id.toString()));
+            
+            // Eliminar de Cloudinary
+            await Promise.all(
+                imagesToRemove.map(img => deleteFromCloudinary(img.public_id))
+            );
 
-       res.status(200).json({
-           success: true,
-           message: "Flat updated successfully",
-           data: updatedFlat
-       });
-   } catch (error) {
-       if (req.files) {
-           await Promise.all(
-               req.files.map(file => deleteFromCloudinary(file.cloudinary.public_id))
-           );
-       }
-       res.status(400).json({
-           success: false,
-           message: "Error updating flat",
-           error: error.message
-       });
-   }
+            // Filtrar las imágenes que se mantendrán
+            updateData.images = flat.images.filter(img => !imagesToDelete.includes(img._id.toString()));
+        }
+
+        // Procesar nuevas imágenes si existen
+        if (req.files && req.files.length > 0) {
+            const newImages = req.files.map(file => ({
+                url: file.cloudinary.url,
+                public_id: file.cloudinary.public_id,
+                description: file.originalname,
+                isMainImage: false
+            }));
+
+            // Si hay imágenes existentes, añadir las nuevas
+            if (updateData.images) {
+                updateData.images = [...updateData.images, ...newImages];
+            } else if (imagesToDelete.length > 0) {
+                // Si solo teníamos las imágenes filtradas
+                updateData.images = [...flat.images.filter(img => !imagesToDelete.includes(img._id.toString())), ...newImages];
+            } else {
+                // Si no hay imágenes previas ni eliminaciones
+                updateData.images = [...flat.images, ...newImages];
+            }
+        }
+
+        // Convertir campos numéricos
+        const numericFields = ['areaSize', 'yearBuilt', 'rentPrice', 'bedrooms', 'bathrooms', 'maxGuests'];
+        numericFields.forEach(field => {
+            if (updateData[field]) {
+                updateData[field] = Number(updateData[field]);
+            }
+        });
+
+        const updatedFlat = await Flat.findByIdAndUpdate(
+            req.params.id,
+            { 
+                ...updateData,
+                atUpdated: Date.now()
+            },
+            { new: true }
+        ).populate('owner', 'firstName lastName email');
+
+        res.status(200).json({
+            success: true,
+            message: "Flat updated successfully",
+            data: updatedFlat
+        });
+    } catch (error) {
+        // Limpiar imágenes subidas en caso de error
+        if (req.files) {
+            await Promise.all(
+                req.files.map(file => deleteFromCloudinary(file.cloudinary.public_id))
+            );
+        }
+        res.status(400).json({
+            success: false,
+            message: "Error updating flat",
+            error: error.message
+        });
+    }
 };
 
 const deleteFlat = async (req, res) => {

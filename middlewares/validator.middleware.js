@@ -381,6 +381,16 @@ const validateUserUpdate = (req, res, next) => {
                 });
             }
         }
+        //validacion de la contraseña que tenga una mayuscula una minuscula y un numero y un caracter espacial
+        if (req.body.password) {
+            const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&?]{8,}$/;
+                    if (!passwordRegex.test(req.body.password)) {
+                        return res.status(400).json({
+                            success: false,
+                            message: "Password must be at least 8 characters long, contain at least one uppercase letter, one lowercase letter, one number, and one special character"
+                        });
+                    }
+        }
 
         next();
     } catch (error) {

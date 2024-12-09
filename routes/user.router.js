@@ -12,7 +12,7 @@ import {
 import { verifyToken } from '../middlewares/auth.middleware.js';
 import { isAdmin, isOwnerOrAdmin } from '../middlewares/authorization.middleware.js';
 import { upload } from '../middlewares/upload.middleware.js';
-import { validateUserUpdate } from '../middlewares/validator.middleware.js';
+import { validateChangePassword, validateUserUpdate,} from '../middlewares/validator.middleware.js';
 
 const router = express.Router();
 
@@ -57,7 +57,8 @@ router.put('/:id',
     isOwnerOrAdmin,
     upload.single('profileImage'),
     validateUserUpdate,
-    updateUser
+    updateUser,
+    
 );
 
 router.delete('/:id',
