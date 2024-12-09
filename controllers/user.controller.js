@@ -5,13 +5,12 @@ import { Flat } from "../models/flat.models.js";
 const updateUser = async (req, res) => {
     try {
         const { id } = req.params;
-        const updateData = { ...req.body };
+        console.log('Body:', req.body);
+        console.log('File:', req.file);
 
         // Verificar autorización
         if (id !== req.user.id && !req.user.isAdmin) {
-            if (req.file) {
-                await deleteFromCloudinary(req.file.cloudinary.public_id);
-            }
+            // No es necesario eliminar la imagen aquí ya que Cloudinary la maneja
             return res.status(403).json({
                 success: false,
                 message: "Not authorized"
@@ -20,14 +19,13 @@ const updateUser = async (req, res) => {
 
         const existingUser = await User.findById(id);
         if (!existingUser) {
-            if (req.file) {
-                await deleteFromCloudinary(req.file.cloudinary.public_id);
-            }
             return res.status(404).json({
                 success: false,
                 message: "User not found"
             });
         }
+
+        const updateData = { ...req.body };
 
         // Solo permitir actualización de isAdmin si el usuario que hace la petición es admin
         if (!req.user.isAdmin) {
@@ -39,33 +37,57 @@ const updateUser = async (req, res) => {
 
         // Actualizar imagen de perfil si se proporcionó
         if (req.file) {
+            console.log('Procesando nueva imagen:', req.file);
+            
             // Eliminar imagen anterior de Cloudinary si existe
             if (existingUser.profileImageId && 
                 existingUser.profileImageId !== "uploads/profiles/default/default-profile") {
-                await deleteFromCloudinary(existingUser.profileImageId);
+                try {
+                    await deleteFromCloudinary(existingUser.profileImageId);
+                } catch (error) {
+                    console.error('Error eliminando imagen anterior:', error);
+                }
             }
-            updateData.profileImage = req.file.cloudinary.url;
-            updateData.profileImageId = req.file.cloudinary.public_id;
+
+            // Extraer el public_id del filename
+            const public_id = req.file.filename;
+            
+            // Actualizar con la nueva imagen
+            updateData.profileImage = req.file.path;
+            updateData.profileImageId = public_id;
         }
 
-        const user = await User.findByIdAndUpdate(
+        console.log('Datos de actualización finales:', updateData);
+
+        // Actualizar usuario
+        const updatedUser = await User.findByIdAndUpdate(
             id,
             { 
                 ...updateData,
                 atUpdated: Date.now()
             },
-            { new: true }
+            { 
+                new: true,
+                runValidators: true 
+            }
         ).select('-password');
+
+        console.log('Usuario actualizado:', updatedUser);
+
+        if (!updatedUser) {
+            throw new Error('Error al actualizar el usuario');
+        }
 
         res.status(200).json({
             success: true,
             message: "User updated successfully",
-            data: user
+            data: updatedUser
         });
+
     } catch (error) {
-        if (req.file) {
-            await deleteFromCloudinary(req.file.cloudinary.public_id);
-        }
+        console.error('Error en updateUser:', error);
+        // No es necesario eliminar el archivo aquí ya que Cloudinary lo maneja
+        
         res.status(400).json({
             success: false,
             message: "Error updating user",

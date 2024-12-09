@@ -121,107 +121,113 @@ const createFlat = async (req, res) => {
     }
 };
 const getFlats = async (req, res) => {
-   try {
-       const {
-           page = 1,
-           limit = 10,
-           city,
-           minPrice,
-           maxPrice,
-           propertyType,
-           bedrooms,
-           bathrooms,
-           minArea,
-           maxArea,
-           amenities,
-           parking,
-           petsAllowed,
-           available,
-           minRating,
-           sortBy,
-           order = 'desc'
-       } = req.query;
-
-       const filters = {};
-
-       // Filtros básicos
-       if (city) filters.city = new RegExp(city, 'i');
-       if (minPrice) filters.rentPrice = { $gte: Number(minPrice) };
-       if (maxPrice) filters.rentPrice = { ...filters.rentPrice, $lte: Number(maxPrice) };
-       if (propertyType) filters.propertyType = propertyType;
-       if (bedrooms) filters.bedrooms = Number(bedrooms);
-       if (bathrooms) filters.bathrooms = Number(bathrooms);
-       if (minArea) filters.areaSize = { $gte: Number(minArea) };
-       if (maxArea) filters.areaSize = { ...filters.areaSize, $lte: Number(maxArea) };
-       if (available === 'true') filters.dateAvailable = { $lte: new Date() };
-       if (minRating) filters['ratings.overall'] = { $gte: Number(minRating) };
-
-       // Filtros de amenidades
-       if (amenities) {
-           const amenityList = amenities.split(',');
-           amenityList.forEach(amenity => {
-               filters[`amenities.${amenity}`] = true;
-           });
-       }
-
-       // Filtro de estacionamiento
-       if (parking) {
-           filters['amenities.parking.available'] = true;
-           if (parking !== 'any') {
-               filters['amenities.parking.type'] = parking;
-           }
-       }
-
-       // Filtro de mascotas
-       if (petsAllowed === 'true') {
-           filters['amenities.petsAllowed'] = true;
-       }
-
-       const skip = (page - 1) * limit;
-
-       // Configuración de ordenamiento
-       let sortOptions = {};
-       switch (sortBy) {
-           case 'price':
-               sortOptions.rentPrice = order === 'desc' ? -1 : 1;
-               break;
-           case 'rating':
-               sortOptions['ratings.overall'] = order === 'desc' ? -1 : 1;
-               break;
-           case 'date':
-               sortOptions.atCreated = order === 'desc' ? -1 : 1;
-               break;
-           default:
-               sortOptions.atCreated = -1;
-       }
-
-       const [flats, total] = await Promise.all([
-           Flat.find(filters)
-               .populate('owner', 'firstName lastName email')
-               .skip(skip)
-               .limit(parseInt(limit))
-               .sort(sortOptions),
-           Flat.countDocuments(filters)
-       ]);
-
-       res.status(200).json({
-           success: true,
-           data: flats,
-           pagination: {
-               total,
-               pages: Math.ceil(total / limit),
-               currentPage: parseInt(page),
-               perPage: parseInt(limit)
-           }
-       });
-   } catch (error) {
-       res.status(400).json({
-           success: false,
-           message: "Error fetching flats",
-           error: error.message
-       });
-   }
-};
+    try {
+        const {
+            owner,
+            page = 1,
+            limit = 10,
+            city,
+            minPrice,
+            maxPrice,
+            propertyType,
+            bedrooms,
+            bathrooms,
+            minArea,
+            maxArea,
+            amenities,
+            parking,
+            petsAllowed,
+            available,
+            minRating,
+            sortBy,
+            order = 'desc'
+        } = req.query;
+ 
+        const filters = {};
+ 
+        // Filtro de propietario
+        if (owner === 'true' && req.user) {
+            filters.owner = req.user.id;
+        }
+ 
+        // Filtros básicos
+        if (city) filters.city = new RegExp(city, 'i');
+        if (minPrice) filters.rentPrice = { $gte: Number(minPrice) };
+        if (maxPrice) filters.rentPrice = { ...filters.rentPrice, $lte: Number(maxPrice) };
+        if (propertyType) filters.propertyType = propertyType;
+        if (bedrooms) filters.bedrooms = Number(bedrooms);
+        if (bathrooms) filters.bathrooms = Number(bathrooms);
+        if (minArea) filters.areaSize = { $gte: Number(minArea) };
+        if (maxArea) filters.areaSize = { ...filters.areaSize, $lte: Number(maxArea) };
+        if (available === 'true') filters.dateAvailable = { $lte: new Date() };
+        if (minRating) filters['ratings.overall'] = { $gte: Number(minRating) };
+ 
+        // Filtros de amenidades
+        if (amenities) {
+            const amenityList = amenities.split(',');
+            amenityList.forEach(amenity => {
+                filters[`amenities.${amenity}`] = true;
+            });
+        }
+ 
+        // Filtro de estacionamiento
+        if (parking) {
+            filters['amenities.parking.available'] = true;
+            if (parking !== 'any') {
+                filters['amenities.parking.type'] = parking;
+            }
+        }
+ 
+        // Filtro de mascotas
+        if (petsAllowed === 'true') {
+            filters['amenities.petsAllowed'] = true;
+        }
+ 
+        const skip = (page - 1) * limit;
+ 
+        // Configuración de ordenamiento
+        let sortOptions = {};
+        switch (sortBy) {
+            case 'price':
+                sortOptions.rentPrice = order === 'desc' ? -1 : 1;
+                break;
+            case 'rating':
+                sortOptions['ratings.overall'] = order === 'desc' ? -1 : 1;
+                break;
+            case 'date':
+                sortOptions.atCreated = order === 'desc' ? -1 : 1;
+                break;
+            default:
+                sortOptions.atCreated = -1;
+        }
+ 
+        const [flats, total] = await Promise.all([
+            Flat.find(filters)
+                .populate('owner', 'firstName lastName email')
+                .skip(skip)
+                .limit(parseInt(limit))
+                .sort(sortOptions),
+            Flat.countDocuments(filters)
+        ]);
+ 
+        res.status(200).json({
+            success: true,
+            data: flats,
+            pagination: {
+                total,
+                pages: Math.ceil(total / limit),
+                currentPage: parseInt(page),
+                perPage: parseInt(limit)
+            }
+        });
+    } catch (error) {
+        res.status(400).json({
+            success: false,
+            message: "Error fetching flats",
+            error: error.message
+        });
+    }
+ };
 
 const getFlatById = async (req, res) => {
    try {

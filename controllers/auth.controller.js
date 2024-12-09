@@ -333,6 +333,24 @@ const resetPassword = async (req, res) => {
         });
     }
 };
+//Metodo de logout
+const logout = async (req, res) => {
+    try {
+        req.logout();
+        req.session.destroy();
+        res.clearCookie('connect.sid');
+        res.status(200).json({
+            success: true,
+            message: "Logout successful"
+        });
+    } catch (error) {
+        res.status(400).json({
+            success: false,
+            message: "Error logging out",
+            error: error.message
+        });
+    }
+};
 
 export {
     register,
