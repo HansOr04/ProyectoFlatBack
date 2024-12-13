@@ -343,55 +343,121 @@ const updateFlat = async (req, res) => {
             });
         }
 
-        // Parsear los campos JSON del body
-        const updateData = {
-            ...req.body,
-            amenities: req.body.amenities ? JSON.parse(req.body.amenities) : undefined,
-            houseRules: req.body.houseRules ? JSON.parse(req.body.houseRules) : undefined,
-            location: req.body.location ? JSON.parse(req.body.location) : undefined,
-            availability: req.body.availability ? JSON.parse(req.body.availability) : undefined
+        // Función auxiliar para parsear campos JSON
+        const parseJsonField = (field) => {
+            try {
+                return field ? JSON.parse(field) : null;
+            } catch (error) {
+                return field;
+            }
         };
 
-        // Procesar campos booleanos de amenities si existen
-        if (updateData.amenities) {
-            const booleanFields = [
-                'wifi', 'tv', 'kitchen', 'washer', 'airConditioning', 
-                'heating', 'workspace', 'pool', 'gym', 'elevator', 
-                'petsAllowed', 'smokeAlarm', 'firstAidKit', 
-                'fireExtinguisher', 'securityCameras'
-            ];
+        // Parsear los campos JSON del body
+        const amenities = parseJsonField(req.body.amenities);
+        const houseRules = parseJsonField(req.body.houseRules);
+        const location = parseJsonField(req.body.location);
+        const availability = parseJsonField(req.body.availability);
 
-            booleanFields.forEach(field => {
-                if (updateData.amenities[field] !== undefined) {
-                    updateData.amenities[field] = updateData.amenities[field] === true || 
-                                                updateData.amenities[field] === 'true';
+        // Preparar el objeto de actualización
+        const updateData = {
+            // Campos básicos
+            title: req.body.title || flat.title,
+            description: req.body.description || flat.description,
+            propertyType: req.body.propertyType || flat.propertyType,
+            city: req.body.city || flat.city,
+            streetName: req.body.streetName || flat.streetName,
+            streetNumber: req.body.streetNumber || flat.streetNumber,
+            areaSize: req.body.areaSize ? Number(req.body.areaSize) : flat.areaSize,
+            yearBuilt: req.body.yearBuilt ? Number(req.body.yearBuilt) : flat.yearBuilt,
+            rentPrice: req.body.rentPrice ? Number(req.body.rentPrice) : flat.rentPrice,
+            dateAvailable: req.body.dateAvailable || flat.dateAvailable,
+            bedrooms: req.body.bedrooms ? Number(req.body.bedrooms) : flat.bedrooms,
+            bathrooms: req.body.bathrooms ? Number(req.body.bathrooms) : flat.bathrooms,
+            maxGuests: req.body.maxGuests ? Number(req.body.maxGuests) : flat.maxGuests,
+
+            // Amenidades
+            amenities: amenities ? {
+                wifi: amenities.wifi === true || amenities.wifi === 'true',
+                tv: amenities.tv === true || amenities.tv === 'true',
+                kitchen: amenities.kitchen === true || amenities.kitchen === 'true',
+                washer: amenities.washer === true || amenities.washer === 'true',
+                airConditioning: amenities.airConditioning === true || amenities.airConditioning === 'true',
+                heating: amenities.heating === true || amenities.heating === 'true',
+                workspace: amenities.workspace === true || amenities.workspace === 'true',
+                pool: amenities.pool === true || amenities.pool === 'true',
+                gym: amenities.gym === true || amenities.gym === 'true',
+                elevator: amenities.elevator === true || amenities.elevator === 'true',
+                petsAllowed: amenities.petsAllowed === true || amenities.petsAllowed === 'true',
+                smokeAlarm: amenities.smokeAlarm === true || amenities.smokeAlarm === 'true',
+                firstAidKit: amenities.firstAidKit === true || amenities.firstAidKit === 'true',
+                fireExtinguisher: amenities.fireExtinguisher === true || amenities.fireExtinguisher === 'true',
+                securityCameras: amenities.securityCameras === true || amenities.securityCameras === 'true',
+                parking: {
+                    available: amenities.parking?.available === true || amenities.parking?.available === 'true',
+                    type: amenities.parking?.type || 'none',
+                    details: amenities.parking?.details || ''
                 }
-            });
+            } : flat.amenities,
 
-            // Procesar parking específicamente
-            if (updateData.amenities.parking) {
-                updateData.amenities.parking.available = 
-                    updateData.amenities.parking.available === true || 
-                    updateData.amenities.parking.available === 'true';
-            }
-        }
+            // Reglas de la casa
+            houseRules: houseRules ? {
+                smokingAllowed: houseRules.smokingAllowed === true || houseRules.smokingAllowed === 'true',
+                eventsAllowed: houseRules.eventsAllowed === true || houseRules.eventsAllowed === 'true',
+                quietHours: {
+                    start: houseRules.quietHours?.start || '22:00',
+                    end: houseRules.quietHours?.end || '08:00'
+                },
+                additionalRules: Array.isArray(houseRules.additionalRules) ? 
+                    houseRules.additionalRules.filter(rule => rule.trim() !== '') : 
+                    flat.houseRules.additionalRules
+            } : flat.houseRules,
+
+            // Ubicación
+            location: location ? {
+                coordinates: {
+                    lat: location.coordinates?.lat || flat.location?.coordinates?.lat || '',
+                    lng: location.coordinates?.lng || flat.location?.coordinates?.lng || ''
+                },
+                neighborhood: location.neighborhood || flat.location?.neighborhood || '',
+                zipCode: location.zipCode || flat.location?.zipCode || '',
+                publicTransport: Array.isArray(location.publicTransport) ? 
+                    location.publicTransport.filter(transport => transport.trim() !== '') : 
+                    flat.location?.publicTransport || [],
+                nearbyPlaces: Array.isArray(location.nearbyPlaces) ? 
+                    location.nearbyPlaces.filter(place => place.trim() !== '') : 
+                    flat.location?.nearbyPlaces || []
+            } : flat.location,
+
+            // Disponibilidad
+            availability: availability ? {
+                minimumStay: Number(availability.minimumStay) || 1,
+                maximumStay: Number(availability.maximumStay) || 365,
+                instantBooking: availability.instantBooking === true || availability.instantBooking === 'true',
+                advanceNotice: Number(availability.advanceNotice) || 1
+            } : flat.availability
+        };
 
         // Manejar imágenes a eliminar
-        const imagesToDelete = req.body.imagesToDelete ? JSON.parse(req.body.imagesToDelete) : [];
+        const imagesToDelete = parseJsonField(req.body.imagesToDelete) || [];
         if (imagesToDelete.length > 0) {
-            // Encontrar las imágenes a eliminar
-            const imagesToRemove = flat.images.filter(img => imagesToDelete.includes(img._id.toString()));
+            const imagesToRemove = flat.images.filter(img => 
+                imagesToDelete.includes(img._id.toString())
+            );
             
             // Eliminar de Cloudinary
             await Promise.all(
                 imagesToRemove.map(img => deleteFromCloudinary(img.public_id))
             );
 
-            // Filtrar las imágenes que se mantendrán
-            updateData.images = flat.images.filter(img => !imagesToDelete.includes(img._id.toString()));
+            // Actualizar array de imágenes
+            updateData.images = flat.images.filter(img => 
+                !imagesToDelete.includes(img._id.toString())
+            );
+        } else {
+            updateData.images = flat.images;
         }
 
-        // Procesar nuevas imágenes si existen
+        // Agregar nuevas imágenes
         if (req.files && req.files.length > 0) {
             const newImages = req.files.map(file => ({
                 url: file.cloudinary.url,
@@ -400,31 +466,17 @@ const updateFlat = async (req, res) => {
                 isMainImage: false
             }));
 
-            // Si hay imágenes existentes, añadir las nuevas
-            if (updateData.images) {
-                updateData.images = [...updateData.images, ...newImages];
-            } else if (imagesToDelete.length > 0) {
-                // Si solo teníamos las imágenes filtradas
-                updateData.images = [...flat.images.filter(img => !imagesToDelete.includes(img._id.toString())), ...newImages];
-            } else {
-                // Si no hay imágenes previas ni eliminaciones
-                updateData.images = [...flat.images, ...newImages];
-            }
+            updateData.images = [...updateData.images, ...newImages];
         }
 
-        // Convertir campos numéricos
-        const numericFields = ['areaSize', 'yearBuilt', 'rentPrice', 'bedrooms', 'bathrooms', 'maxGuests'];
-        numericFields.forEach(field => {
-            if (updateData[field]) {
-                updateData[field] = Number(updateData[field]);
-            }
-        });
-
+        // Actualizar el documento
         const updatedFlat = await Flat.findByIdAndUpdate(
             req.params.id,
-            { 
-                ...updateData,
-                atUpdated: Date.now()
+            {
+                $set: {
+                    ...updateData,
+                    atUpdated: Date.now()
+                }
             },
             { new: true }
         ).populate('owner', 'firstName lastName email');
@@ -435,12 +487,14 @@ const updateFlat = async (req, res) => {
             data: updatedFlat
         });
     } catch (error) {
+        console.error('Error completo:', error);
         // Limpiar imágenes subidas en caso de error
         if (req.files) {
             await Promise.all(
                 req.files.map(file => deleteFromCloudinary(file.cloudinary.public_id))
             );
         }
+
         res.status(400).json({
             success: false,
             message: "Error updating flat",
