@@ -1,8 +1,8 @@
-
- import { Flat } from "../models/flat.models.js";
+import { Flat } from "../models/flat.models.js";
 import { Message } from "../models/message.model.js";
 import { User } from "../models/user.model.js";
 import { deleteFromCloudinary } from "../configs/cloudinary.config.js";
+
 const createFlat = async (req, res) => {
     try {
         const owner = req.user.id;
@@ -23,14 +23,23 @@ const createFlat = async (req, res) => {
             isMainImage: index === 0
         }));
 
-        // Parsear los campos JSON
-        const amenities = req.body.amenities ? JSON.parse(req.body.amenities) : {};
-        const houseRules = req.body.houseRules ? JSON.parse(req.body.houseRules) : {};
-        const location = req.body.location ? JSON.parse(req.body.location) : {};
-        const availability = req.body.availability ? JSON.parse(req.body.availability) : {};
+        // Parsear todos los campos JSON del body
+        const parseJsonField = (field) => {
+            try {
+                return field ? JSON.parse(field) : {};
+            } catch (error) {
+                return field || {};
+            }
+        };
+
+        const amenities = parseJsonField(req.body.amenities);
+        const houseRules = parseJsonField(req.body.houseRules);
+        const location = parseJsonField(req.body.location);
+        const availability = parseJsonField(req.body.availability);
 
         // Crear el objeto de datos del departamento
         const flatData = {
+            // Información básica
             title: req.body.title,
             description: req.body.description,
             propertyType: req.body.propertyType,
@@ -46,11 +55,63 @@ const createFlat = async (req, res) => {
             maxGuests: Number(req.body.maxGuests),
             owner,
             images,
-            // Añadir los objetos parseados
-            amenities,
-            houseRules,
-            location,
-            availability,
+
+            // Objetos complejos
+            amenities: {
+                wifi: amenities.wifi === 'true' || amenities.wifi === true,
+                tv: amenities.tv === 'true' || amenities.tv === true,
+                kitchen: amenities.kitchen === 'true' || amenities.kitchen === true,
+                washer: amenities.washer === 'true' || amenities.washer === true,
+                airConditioning: amenities.airConditioning === 'true' || amenities.airConditioning === true,
+                heating: amenities.heating === 'true' || amenities.heating === true,
+                workspace: amenities.workspace === 'true' || amenities.workspace === true,
+                pool: amenities.pool === 'true' || amenities.pool === true,
+                gym: amenities.gym === 'true' || amenities.gym === true,
+                elevator: amenities.elevator === 'true' || amenities.elevator === true,
+                petsAllowed: amenities.petsAllowed === 'true' || amenities.petsAllowed === true,
+                smokeAlarm: amenities.smokeAlarm === 'true' || amenities.smokeAlarm === true,
+                firstAidKit: amenities.firstAidKit === 'true' || amenities.firstAidKit === true,
+                fireExtinguisher: amenities.fireExtinguisher === 'true' || amenities.fireExtinguisher === true,
+                securityCameras: amenities.securityCameras === 'true' || amenities.securityCameras === true,
+                parking: {
+                    available: amenities.parking?.available === 'true' || amenities.parking?.available === true,
+                    type: amenities.parking?.type || 'none',
+                    details: amenities.parking?.details || ''
+                }
+            },
+
+            houseRules: {
+                smokingAllowed: houseRules.smokingAllowed === 'true' || houseRules.smokingAllowed === true,
+                eventsAllowed: houseRules.eventsAllowed === 'true' || houseRules.eventsAllowed === true,
+                quietHours: {
+                    start: houseRules.quietHours?.start || '22:00',
+                    end: houseRules.quietHours?.end || '08:00'
+                },
+                additionalRules: Array.isArray(houseRules.additionalRules) ? 
+                    houseRules.additionalRules.filter(rule => rule !== '') : []
+            },
+
+            location: {
+                coordinates: {
+                    lat: location.coordinates?.lat || '',
+                    lng: location.coordinates?.lng || ''
+                },
+                neighborhood: location.neighborhood || '',
+                zipCode: location.zipCode || '',
+                publicTransport: Array.isArray(location.publicTransport) ? 
+                    location.publicTransport.filter(transport => transport !== '') : [],
+                nearbyPlaces: Array.isArray(location.nearbyPlaces) ? 
+                    location.nearbyPlaces.filter(place => place !== '') : []
+            },
+
+            availability: {
+                minimumStay: Number(availability.minimumStay) || 1,
+                maximumStay: Number(availability.maximumStay) || 365,
+                instantBooking: availability.instantBooking === 'true' || availability.instantBooking === true,
+                advanceNotice: Number(availability.advanceNotice) || 1
+            },
+
+            // Inicializar ratings
             ratings: {
                 overall: 0,
                 aspects: {
@@ -63,29 +124,6 @@ const createFlat = async (req, res) => {
                 totalReviews: 0
             }
         };
-
-        // Procesar campos booleanos de amenities
-        if (flatData.amenities) {
-            const booleanFields = [
-                'wifi', 'tv', 'kitchen', 'washer', 'airConditioning', 
-                'heating', 'workspace', 'pool', 'gym', 'elevator', 
-                'petsAllowed', 'smokeAlarm', 'firstAidKit', 
-                'fireExtinguisher', 'securityCameras'
-            ];
-
-            booleanFields.forEach(field => {
-                if (flatData.amenities[field] !== undefined) {
-                    flatData.amenities[field] = flatData.amenities[field] === true || 
-                                              flatData.amenities[field] === 'true';
-                }
-            });
-
-            if (flatData.amenities.parking) {
-                flatData.amenities.parking.available = 
-                    flatData.amenities.parking.available === true || 
-                    flatData.amenities.parking.available === 'true';
-            }
-        }
 
         const flat = new Flat(flatData);
         await flat.save();
