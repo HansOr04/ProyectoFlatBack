@@ -9,10 +9,11 @@ import {
     updateImages,
     getFlatStats
 } from '../controllers/flat.controller.js';
+import { contactOwner } from '../controllers/contact.controller.js';
 import { verifyToken } from '../middlewares/auth.middleware.js';
 import { isAdminOrOwner } from '../middlewares/authorization.middleware.js';
 import { upload, uploadConfig, handleUploadErrors } from '../middlewares/upload.middleware.js';
-import { validateFlatCreation, validateFlatUpdate } from '../middlewares/validator.middleware.js';
+import { validateFlatCreation, validateFlatUpdate, validateContactForm} from '../middlewares/validator.middleware.js';
 
 const router = express.Router();
 
@@ -43,6 +44,10 @@ router.put('/:id',
     handleUploadErrors,
     validateFlatUpdate,
     updateFlat
+);
+router.post('/:flatId/contact',
+    validateContactForm,
+    contactOwner
 );
 
 router.delete('/:id',
