@@ -600,6 +600,60 @@ const validateResetPassword = (req, res, next) => {
         });
     }
 };
+const validateContactForm = (req, res, next) => {
+    try {
+        const { name, cedula, email, message } = req.body;
+
+        // Validar nombre
+        if (!name || name.trim().length < 2) {
+            return res.status(400).json({
+                success: false,
+                message: "Name must be at least 2 characters long"
+            });
+        }
+
+        // Validar cédula (asumiendo formato ecuatoriano)
+        const cedulaRegex = /^[0-9]{10}$/;
+        if (!cedula || !cedulaRegex.test(cedula)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid cedula format"
+            });
+        }
+
+        // Validar email
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!email || !emailRegex.test(email)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid email format"
+            });
+        }
+
+        // Validar mensaje
+        if (!message || message.trim().length < 10) {
+            return res.status(400).json({
+                success: false,
+                message: "Message must be at least 10 characters long"
+            });
+        }
+
+        if (message.length > 1000) {
+            return res.status(400).json({
+                success: false,
+                message: "Message cannot exceed 1000 characters"
+            });
+        }
+
+        next();
+    } catch (error) {
+        res.status(400).json({
+            success: false,
+            message: "Error in validation",
+            error: error.message
+        });
+    }
+};
 
 // Actualizar las exportaciones para incluir los nuevos validadores
 export {
@@ -611,6 +665,8 @@ export {
     validateUserUpdate,
     validateChangePassword,
     validateRating,
-    validateForgotPassword,    // Añadir esta exportación
-    validateResetPassword     // Añadir esta exportación
+    validateForgotPassword,    
+    validateResetPassword,
+    validateContactForm     
+    
 };
