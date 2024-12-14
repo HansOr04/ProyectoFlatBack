@@ -15,27 +15,110 @@ const createFlat = async (req, res) => {
             });
         }
 
-        // Procesar las imágenes
-        let images = req.files.map((file, index) => ({
-            url: file.cloudinary.url,
-            public_id: file.cloudinary.public_id,
-            description: file.originalname,
-            isMainImage: index === 0
-        }));
-
-        // Parsear todos los campos JSON del body
+        // Función auxiliar para parsear campos JSON y convertir strings 'true'/'false' a booleanos
         const parseJsonField = (field) => {
             try {
-                return field ? JSON.parse(field) : {};
+                if (typeof field === 'string') {
+                    const parsed = JSON.parse(field);
+                    return parsed;
+                }
+                return field || null;
             } catch (error) {
-                return field || {};
+                return field;
             }
         };
 
+        // Parsear los campos JSON del body
         const amenities = parseJsonField(req.body.amenities);
         const houseRules = parseJsonField(req.body.houseRules);
         const location = parseJsonField(req.body.location);
         const availability = parseJsonField(req.body.availability);
+
+        // Procesar las imágenes
+        const images = req.files.map((file, index) => ({
+            url: file.cloudinary.url,
+            public_id: file.cloudinary.public_id,
+            description: file.originalname,
+            isMainImage: index === 0, // Primera imagen como principal por defecto
+            uploadDate: Date.now()
+        }));
+
+        // Procesar amenities asegurando valores booleanos
+        const processedAmenities = {
+            wifi: amenities?.wifi === true || amenities?.wifi === 'true',
+            tv: amenities?.tv === true || amenities?.tv === 'true',
+            kitchen: amenities?.kitchen === true || amenities?.kitchen === 'true',
+            washer: amenities?.washer === true || amenities?.washer === 'true',
+            airConditioning: amenities?.airConditioning === true || amenities?.airConditioning === 'true',
+            heating: amenities?.heating === true || amenities?.heating === 'true',
+            workspace: amenities?.workspace === true || amenities?.workspace === 'true',
+            pool: amenities?.pool === true || amenities?.pool === 'true',
+            gym: amenities?.gym === true || amenities?.gym === 'true',
+            elevator: amenities?.elevator === true || amenities?.elevator === 'true',
+            petsAllowed: amenities?.petsAllowed === true || amenities?.petsAllowed === 'true',
+            smokeAlarm: amenities?.smokeAlarm === true || amenities?.smokeAlarm === 'true',
+            firstAidKit: amenities?.firstAidKit === true || amenities?.firstAidKit === 'true',
+            fireExtinguisher: amenities?.fireExtinguisher === true || amenities?.fireExtinguisher === 'true',
+            securityCameras: amenities?.securityCameras === true || amenities?.securityCameras === 'true',
+            parking: {
+                available: amenities?.parking?.available === true || amenities?.parking?.available === 'true',
+                type: amenities?.parking?.type || 'none',
+                details: amenities?.parking?.details || ''
+            }
+        };
+
+        // Procesar house rules
+        const processedHouseRules = {
+            smokingAllowed: houseRules?.smokingAllowed === true || houseRules?.smokingAllowed === 'true',
+            eventsAllowed: houseRules?.eventsAllowed === true || houseRules?.eventsAllowed === 'true',
+            quietHours: {
+                start: houseRules?.quietHours?.start || '22:00',
+                end: houseRules?.quietHours?.end || '08:00'
+            },
+            additionalRules: Array.isArray(houseRules?.additionalRules) ? 
+                houseRules.additionalRules.filter(rule => rule && rule.trim() !== '') : 
+                []
+        };
+
+        // Procesar location
+        const processedLocation = {
+            coordinates: {
+                lat: parseFloat(location?.coordinates?.lat) || null,
+                lng: parseFloat(location?.coordinates?.lng) || null
+            },
+            neighborhood: location?.neighborhood || '',
+            zipCode: location?.zipCode || '',
+            publicTransport: Array.isArray(location?.publicTransport) ? 
+                location.publicTransport.filter(transport => transport && transport.trim() !== '') : 
+                [],
+            nearbyPlaces: Array.isArray(location?.nearbyPlaces) ? 
+                location.nearbyPlaces.filter(place => place && place.trim() !== '') : 
+                []
+        };
+
+        // Procesar availability
+        const processedAvailability = {
+            minimumStay: parseInt(availability?.minimumStay) || 1,
+            maximumStay: parseInt(availability?.maximumStay) || 365,
+            instantBooking: availability?.instantBooking === true || availability?.instantBooking === 'true',
+            advanceNotice: parseInt(availability?.advanceNotice) || 1
+        };
+
+        // Validar y convertir campos numéricos requeridos
+        const areaSize = Number(req.body.areaSize);
+        const yearBuilt = Number(req.body.yearBuilt);
+        const rentPrice = Number(req.body.rentPrice);
+        const bedrooms = Number(req.body.bedrooms);
+        const bathrooms = Number(req.body.bathrooms);
+        const maxGuests = Number(req.body.maxGuests);
+
+        if (isNaN(areaSize) || isNaN(yearBuilt) || isNaN(rentPrice) || 
+            isNaN(bedrooms) || isNaN(bathrooms) || isNaN(maxGuests)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid numeric values provided"
+            });
+        }
 
         // Crear el objeto de datos del departamento
         const flatData = {
@@ -46,70 +129,21 @@ const createFlat = async (req, res) => {
             city: req.body.city,
             streetName: req.body.streetName,
             streetNumber: req.body.streetNumber,
-            areaSize: Number(req.body.areaSize),
-            yearBuilt: Number(req.body.yearBuilt),
-            rentPrice: Number(req.body.rentPrice),
+            areaSize,
+            yearBuilt,
+            rentPrice,
             dateAvailable: req.body.dateAvailable,
-            bedrooms: Number(req.body.bedrooms),
-            bathrooms: Number(req.body.bathrooms),
-            maxGuests: Number(req.body.maxGuests),
+            bedrooms,
+            bathrooms,
+            maxGuests,
             owner,
             images,
 
-            // Objetos complejos
-            amenities: {
-                wifi: amenities.wifi === 'true' || amenities.wifi === true,
-                tv: amenities.tv === 'true' || amenities.tv === true,
-                kitchen: amenities.kitchen === 'true' || amenities.kitchen === true,
-                washer: amenities.washer === 'true' || amenities.washer === true,
-                airConditioning: amenities.airConditioning === 'true' || amenities.airConditioning === true,
-                heating: amenities.heating === 'true' || amenities.heating === true,
-                workspace: amenities.workspace === 'true' || amenities.workspace === true,
-                pool: amenities.pool === 'true' || amenities.pool === true,
-                gym: amenities.gym === 'true' || amenities.gym === true,
-                elevator: amenities.elevator === 'true' || amenities.elevator === true,
-                petsAllowed: amenities.petsAllowed === 'true' || amenities.petsAllowed === true,
-                smokeAlarm: amenities.smokeAlarm === 'true' || amenities.smokeAlarm === true,
-                firstAidKit: amenities.firstAidKit === 'true' || amenities.firstAidKit === true,
-                fireExtinguisher: amenities.fireExtinguisher === 'true' || amenities.fireExtinguisher === true,
-                securityCameras: amenities.securityCameras === 'true' || amenities.securityCameras === true,
-                parking: {
-                    available: amenities.parking?.available === 'true' || amenities.parking?.available === true,
-                    type: amenities.parking?.type || 'none',
-                    details: amenities.parking?.details || ''
-                }
-            },
-
-            houseRules: {
-                smokingAllowed: houseRules.smokingAllowed === 'true' || houseRules.smokingAllowed === true,
-                eventsAllowed: houseRules.eventsAllowed === 'true' || houseRules.eventsAllowed === true,
-                quietHours: {
-                    start: houseRules.quietHours?.start || '22:00',
-                    end: houseRules.quietHours?.end || '08:00'
-                },
-                additionalRules: Array.isArray(houseRules.additionalRules) ? 
-                    houseRules.additionalRules.filter(rule => rule !== '') : []
-            },
-
-            location: {
-                coordinates: {
-                    lat: location.coordinates?.lat || '',
-                    lng: location.coordinates?.lng || ''
-                },
-                neighborhood: location.neighborhood || '',
-                zipCode: location.zipCode || '',
-                publicTransport: Array.isArray(location.publicTransport) ? 
-                    location.publicTransport.filter(transport => transport !== '') : [],
-                nearbyPlaces: Array.isArray(location.nearbyPlaces) ? 
-                    location.nearbyPlaces.filter(place => place !== '') : []
-            },
-
-            availability: {
-                minimumStay: Number(availability.minimumStay) || 1,
-                maximumStay: Number(availability.maximumStay) || 365,
-                instantBooking: availability.instantBooking === 'true' || availability.instantBooking === true,
-                advanceNotice: Number(availability.advanceNotice) || 1
-            },
+            // Objetos procesados
+            amenities: processedAmenities,
+            houseRules: processedHouseRules,
+            location: processedLocation,
+            availability: processedAvailability,
 
             // Inicializar ratings
             ratings: {
@@ -122,16 +156,42 @@ const createFlat = async (req, res) => {
                     value: 0
                 },
                 totalReviews: 0
-            }
+            },
+
+            // Timestamps
+            atCreated: Date.now(),
+            atUpdated: Date.now()
         };
 
+        // Validar campos requeridos
+        const requiredFields = [
+            'title', 'description', 'propertyType', 'city', 
+            'streetName', 'streetNumber', 'areaSize', 'yearBuilt', 
+            'rentPrice', 'dateAvailable', 'bedrooms', 'bathrooms', 'maxGuests'
+        ];
+
+        const missingFields = requiredFields.filter(field => !flatData[field]);
+        if (missingFields.length > 0) {
+            return res.status(400).json({
+                success: false,
+                message: `Missing required fields: ${missingFields.join(', ')}`
+            });
+        }
+
+        // Crear y guardar el departamento
         const flat = new Flat(flatData);
         await flat.save();
+
+        // Actualizar el usuario
         await User.findByIdAndUpdate(
             owner,
-            { $push: { flatsOwned: flat._id } }
+            { 
+                $push: { flatsOwned: flat._id },
+                $set: { atUpdated: Date.now() }
+            }
         );
 
+        // Poblar la información del propietario
         await flat.populate('owner', 'firstName lastName email');
 
         res.status(201).json({
@@ -139,16 +199,14 @@ const createFlat = async (req, res) => {
             message: "Flat created successfully",
             data: flat
         });
+
     } catch (error) {
         console.error('Error completo:', error);
+        // Limpiar imágenes en caso de error
         if (req.files) {
-            for (const file of req.files) {
-                try {
-                    await deleteFromCloudinary(file.cloudinary.public_id);
-                } catch (deleteError) {
-                    console.error('Error deleting file:', deleteError);
-                }
-            }
+            await Promise.all(
+                req.files.map(file => deleteFromCloudinary(file.cloudinary.public_id))
+            );
         }
 
         res.status(400).json({
@@ -343,10 +401,14 @@ const updateFlat = async (req, res) => {
             });
         }
 
-        // Función auxiliar para parsear campos JSON
+        // Función auxiliar para parsear campos JSON y convertir strings 'true'/'false' a booleanos
         const parseJsonField = (field) => {
             try {
-                return field ? JSON.parse(field) : null;
+                if (typeof field === 'string') {
+                    const parsed = JSON.parse(field);
+                    return parsed;
+                }
+                return field || null;
             } catch (error) {
                 return field;
             }
@@ -358,9 +420,122 @@ const updateFlat = async (req, res) => {
         const location = parseJsonField(req.body.location);
         const availability = parseJsonField(req.body.availability);
 
-        // Preparar el objeto de actualización
+        // Procesar amenities asegurando valores booleanos
+        const processedAmenities = amenities ? {
+            wifi: amenities.wifi === true || amenities.wifi === 'true',
+            tv: amenities.tv === true || amenities.tv === 'true',
+            kitchen: amenities.kitchen === true || amenities.kitchen === 'true',
+            washer: amenities.washer === true || amenities.washer === 'true',
+            airConditioning: amenities.airConditioning === true || amenities.airConditioning === 'true',
+            heating: amenities.heating === true || amenities.heating === 'true',
+            workspace: amenities.workspace === true || amenities.workspace === 'true',
+            pool: amenities.pool === true || amenities.pool === 'true',
+            gym: amenities.gym === true || amenities.gym === 'true',
+            elevator: amenities.elevator === true || amenities.elevator === 'true',
+            petsAllowed: amenities.petsAllowed === true || amenities.petsAllowed === 'true',
+            smokeAlarm: amenities.smokeAlarm === true || amenities.smokeAlarm === 'true',
+            firstAidKit: amenities.firstAidKit === true || amenities.firstAidKit === 'true',
+            fireExtinguisher: amenities.fireExtinguisher === true || amenities.fireExtinguisher === 'true',
+            securityCameras: amenities.securityCameras === true || amenities.securityCameras === 'true',
+            parking: {
+                available: amenities.parking?.available === true || amenities.parking?.available === 'true',
+                type: amenities.parking?.type || 'none',
+                details: amenities.parking?.details || ''
+            }
+        } : flat.amenities;
+
+        // Procesar house rules
+        const processedHouseRules = houseRules ? {
+            smokingAllowed: houseRules.smokingAllowed === true || houseRules.smokingAllowed === 'true',
+            eventsAllowed: houseRules.eventsAllowed === true || houseRules.eventsAllowed === 'true',
+            quietHours: {
+                start: houseRules.quietHours?.start || '22:00',
+                end: houseRules.quietHours?.end || '08:00'
+            },
+            additionalRules: Array.isArray(houseRules.additionalRules) ? 
+                houseRules.additionalRules.filter(rule => rule.trim() !== '') : 
+                flat.houseRules.additionalRules
+        } : flat.houseRules;
+
+        // Procesar location
+        const processedLocation = location ? {
+            coordinates: {
+                lat: parseFloat(location.coordinates?.lat) || flat.location?.coordinates?.lat || null,
+                lng: parseFloat(location.coordinates?.lng) || flat.location?.coordinates?.lng || null
+            },
+            neighborhood: location.neighborhood || flat.location?.neighborhood || '',
+            zipCode: location.zipCode || flat.location?.zipCode || '',
+            publicTransport: Array.isArray(location.publicTransport) ? 
+                location.publicTransport.filter(transport => transport.trim() !== '') : 
+                flat.location?.publicTransport || [],
+            nearbyPlaces: Array.isArray(location.nearbyPlaces) ? 
+                location.nearbyPlaces.filter(place => place.trim() !== '') : 
+                flat.location?.nearbyPlaces || []
+        } : flat.location;
+
+        // Procesar availability
+        const processedAvailability = availability ? {
+            minimumStay: parseInt(availability.minimumStay) || 1,
+            maximumStay: parseInt(availability.maximumStay) || 365,
+            instantBooking: availability.instantBooking === true || availability.instantBooking === 'true',
+            advanceNotice: parseInt(availability.advanceNotice) || 1
+        } : flat.availability;
+
+        // Manejar imágenes
+        let currentImages = [...flat.images];
+        
+        // Procesar imágenes a eliminar
+        const imagesToDelete = parseJsonField(req.body.imagesToDelete) || [];
+        if (imagesToDelete.length > 0) {
+            // Encontrar las imágenes a eliminar
+            const imagesToRemove = currentImages.filter(img => 
+                imagesToDelete.includes(img._id.toString())
+            );
+            
+            // Eliminar de Cloudinary
+            await Promise.all(
+                imagesToRemove.map(img => deleteFromCloudinary(img.public_id))
+            );
+
+            // Actualizar array de imágenes
+            currentImages = currentImages.filter(img => 
+                !imagesToDelete.includes(img._id.toString())
+            );
+        }
+
+        // Agregar nuevas imágenes
+        if (req.files && req.files.length > 0) {
+            const newImages = req.files.map(file => ({
+                url: file.cloudinary.url,
+                public_id: file.cloudinary.public_id,
+                description: file.originalname,
+                isMainImage: false
+            }));
+
+            currentImages = [...currentImages, ...newImages];
+        }
+
+        // Validar que haya al menos una imagen
+        if (currentImages.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: "At least one image is required"
+            });
+        }
+
+        // Manejar imagen principal
+        const mainImageId = req.body.mainImageId;
+        if (mainImageId) {
+            currentImages = currentImages.map(img => ({
+                ...img,
+                isMainImage: img._id?.toString() === mainImageId
+            }));
+        } else if (!currentImages.some(img => img.isMainImage)) {
+            currentImages[0].isMainImage = true;
+        }
+
+        // Preparar datos de actualización
         const updateData = {
-            // Campos básicos
             title: req.body.title || flat.title,
             description: req.body.description || flat.description,
             propertyType: req.body.propertyType || flat.propertyType,
@@ -374,110 +549,18 @@ const updateFlat = async (req, res) => {
             bedrooms: req.body.bedrooms ? Number(req.body.bedrooms) : flat.bedrooms,
             bathrooms: req.body.bathrooms ? Number(req.body.bathrooms) : flat.bathrooms,
             maxGuests: req.body.maxGuests ? Number(req.body.maxGuests) : flat.maxGuests,
-
-            // Amenidades
-            amenities: amenities ? {
-                wifi: amenities.wifi === true || amenities.wifi === 'true',
-                tv: amenities.tv === true || amenities.tv === 'true',
-                kitchen: amenities.kitchen === true || amenities.kitchen === 'true',
-                washer: amenities.washer === true || amenities.washer === 'true',
-                airConditioning: amenities.airConditioning === true || amenities.airConditioning === 'true',
-                heating: amenities.heating === true || amenities.heating === 'true',
-                workspace: amenities.workspace === true || amenities.workspace === 'true',
-                pool: amenities.pool === true || amenities.pool === 'true',
-                gym: amenities.gym === true || amenities.gym === 'true',
-                elevator: amenities.elevator === true || amenities.elevator === 'true',
-                petsAllowed: amenities.petsAllowed === true || amenities.petsAllowed === 'true',
-                smokeAlarm: amenities.smokeAlarm === true || amenities.smokeAlarm === 'true',
-                firstAidKit: amenities.firstAidKit === true || amenities.firstAidKit === 'true',
-                fireExtinguisher: amenities.fireExtinguisher === true || amenities.fireExtinguisher === 'true',
-                securityCameras: amenities.securityCameras === true || amenities.securityCameras === 'true',
-                parking: {
-                    available: amenities.parking?.available === true || amenities.parking?.available === 'true',
-                    type: amenities.parking?.type || 'none',
-                    details: amenities.parking?.details || ''
-                }
-            } : flat.amenities,
-
-            // Reglas de la casa
-            houseRules: houseRules ? {
-                smokingAllowed: houseRules.smokingAllowed === true || houseRules.smokingAllowed === 'true',
-                eventsAllowed: houseRules.eventsAllowed === true || houseRules.eventsAllowed === 'true',
-                quietHours: {
-                    start: houseRules.quietHours?.start || '22:00',
-                    end: houseRules.quietHours?.end || '08:00'
-                },
-                additionalRules: Array.isArray(houseRules.additionalRules) ? 
-                    houseRules.additionalRules.filter(rule => rule.trim() !== '') : 
-                    flat.houseRules.additionalRules
-            } : flat.houseRules,
-
-            // Ubicación
-            location: location ? {
-                coordinates: {
-                    lat: location.coordinates?.lat || flat.location?.coordinates?.lat || '',
-                    lng: location.coordinates?.lng || flat.location?.coordinates?.lng || ''
-                },
-                neighborhood: location.neighborhood || flat.location?.neighborhood || '',
-                zipCode: location.zipCode || flat.location?.zipCode || '',
-                publicTransport: Array.isArray(location.publicTransport) ? 
-                    location.publicTransport.filter(transport => transport.trim() !== '') : 
-                    flat.location?.publicTransport || [],
-                nearbyPlaces: Array.isArray(location.nearbyPlaces) ? 
-                    location.nearbyPlaces.filter(place => place.trim() !== '') : 
-                    flat.location?.nearbyPlaces || []
-            } : flat.location,
-
-            // Disponibilidad
-            availability: availability ? {
-                minimumStay: Number(availability.minimumStay) || 1,
-                maximumStay: Number(availability.maximumStay) || 365,
-                instantBooking: availability.instantBooking === true || availability.instantBooking === 'true',
-                advanceNotice: Number(availability.advanceNotice) || 1
-            } : flat.availability
+            amenities: processedAmenities,
+            houseRules: processedHouseRules,
+            location: processedLocation,
+            availability: processedAvailability,
+            images: currentImages,
+            atUpdated: Date.now()
         };
-
-        // Manejar imágenes a eliminar
-        const imagesToDelete = parseJsonField(req.body.imagesToDelete) || [];
-        if (imagesToDelete.length > 0) {
-            const imagesToRemove = flat.images.filter(img => 
-                imagesToDelete.includes(img._id.toString())
-            );
-            
-            // Eliminar de Cloudinary
-            await Promise.all(
-                imagesToRemove.map(img => deleteFromCloudinary(img.public_id))
-            );
-
-            // Actualizar array de imágenes
-            updateData.images = flat.images.filter(img => 
-                !imagesToDelete.includes(img._id.toString())
-            );
-        } else {
-            updateData.images = flat.images;
-        }
-
-        // Agregar nuevas imágenes
-        if (req.files && req.files.length > 0) {
-            const newImages = req.files.map(file => ({
-                url: file.cloudinary.url,
-                public_id: file.cloudinary.public_id,
-                description: file.originalname,
-                isMainImage: false
-            }));
-
-            updateData.images = [...updateData.images, ...newImages];
-        }
 
         // Actualizar el documento
         const updatedFlat = await Flat.findByIdAndUpdate(
             req.params.id,
-            {
-                $set: {
-                    ...updateData,
-                    atUpdated: Date.now()
-                }
-            },
+            { $set: updateData },
             { new: true }
         ).populate('owner', 'firstName lastName email');
 
@@ -488,7 +571,6 @@ const updateFlat = async (req, res) => {
         });
     } catch (error) {
         console.error('Error completo:', error);
-        // Limpiar imágenes subidas en caso de error
         if (req.files) {
             await Promise.all(
                 req.files.map(file => deleteFromCloudinary(file.cloudinary.public_id))
@@ -560,83 +642,144 @@ const deleteFlat = async (req, res) => {
 };
 
 const updateImages = async (req, res) => {
-   try {
-       const { id } = req.params;
-       const { mainImageId, deleteImages } = req.body;
-       
-       const flat = await Flat.findById(id);
-       
-       if (!flat) {
-           if (req.files) {
-               await Promise.all(
-                   req.files.map(file => deleteFromCloudinary(file.cloudinary.public_id))
-               );
-           }
-           return res.status(404).json({
-               success: false,
-               message: "Flat not found"
-           });
-       }
+    try {
+        const { id } = req.params;
+        const flat = await Flat.findById(id);
+        
+        // Validar que el flat existe
+        if (!flat) {
+            if (req.files) {
+                await Promise.all(
+                    req.files.map(file => deleteFromCloudinary(file.cloudinary.public_id))
+                );
+            }
+            return res.status(404).json({
+                success: false,
+                message: "Flat not found"
+            });
+        }
 
-       if (flat.owner.toString() !== req.user.id && !req.user.isAdmin) {
-           if (req.files) {
-               await Promise.all(
-                   req.files.map(file => deleteFromCloudinary(file.cloudinary.public_id))
-               );
-           }
-           return res.status(403).json({
-               success: false,
-               message: "Not authorized"
-           });
-       }
+        // Validar autorización
+        if (flat.owner.toString() !== req.user.id && !req.user.isAdmin) {
+            if (req.files) {
+                await Promise.all(
+                    req.files.map(file => deleteFromCloudinary(file.cloudinary.public_id))
+                );
+            }
+            return res.status(403).json({
+                success: false,
+                message: "Not authorized"
+            });
+        }
 
-       // Eliminar imágenes seleccionadas
-       if (deleteImages && deleteImages.length > 0) {
-           const imagesToDelete = flat.images.filter(img => 
-               deleteImages.includes(img._id.toString())
-           );
-           await Promise.all(
-               imagesToDelete.map(img => deleteFromCloudinary(img.public_id))
-           );
-           flat.images = flat.images.filter(img => 
-               !deleteImages.includes(img._id.toString())
-           );
-       }
+        // Función auxiliar para parsear campos JSON
+        const parseJsonField = (field) => {
+            try {
+                return field ? JSON.parse(field) : null;
+            } catch (error) {
+                return null;
+            }
+        };
 
-       // Agregar nuevas imágenes
-       if (req.files && req.files.length > 0) {
-           const newImages = req.files.map(file => ({
-               url: file.cloudinary.url,
-               public_id: file.cloudinary.public_id,
-               description: file.originalname
-           }));
-           flat.images.push(...newImages);
-       }
+        // Obtener imágenes actuales y el ID de la imagen principal
+        let currentImages = [...flat.images];
+        const mainImageId = req.body.mainImageId;
+        const imagesToDelete = parseJsonField(req.body.deleteImages) || [];
 
-       // Actualizar imagen principal
-       if (mainImageId) {
-           await flat.setMainImage(mainImageId);
-       }
+        // 1. Procesar eliminación de imágenes
+        if (imagesToDelete.length > 0) {
+            // Encontrar las imágenes a eliminar
+            const imagesToRemove = currentImages.filter(img => 
+                imagesToDelete.includes(img._id.toString())
+            );
+            
+            // Eliminar de Cloudinary
+            await Promise.all(
+                imagesToRemove.map(img => deleteFromCloudinary(img.public_id))
+            );
 
-       await flat.save();
+            // Filtrar las imágenes que se mantendrán
+            currentImages = currentImages.filter(img => 
+                !imagesToDelete.includes(img._id.toString())
+            );
+        }
 
-       res.status(200).json({
-           success: true,
-           message: "Images updated successfully",
-           data: flat
-       });
-   } catch (error) {
-       if (req.files) {
-           await Promise.all(
-               req.files.map(file => deleteFromCloudinary(file.cloudinary.public_id))
-           );
-       }
-       res.status(400).json({
-           success: false,
-           message: "Error updating images",
-           error: error.message
-       });
-   }
+        // 2. Procesar nuevas imágenes
+        if (req.files && req.files.length > 0) {
+            const newImages = req.files.map(file => ({
+                url: file.cloudinary.url,
+                public_id: file.cloudinary.public_id,
+                description: file.originalname,
+                isMainImage: false
+            }));
+
+            currentImages = [...currentImages, ...newImages];
+        }
+
+        // 3. Validar que haya al menos una imagen
+        if (currentImages.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: "At least one image is required"
+            });
+        }
+
+        // 4. Actualizar imagen principal
+        if (mainImageId) {
+            // Verificar que el ID existe en las imágenes actuales
+            const mainImageExists = currentImages.some(img => 
+                img._id?.toString() === mainImageId || 
+                img._id === mainImageId
+            );
+
+            if (!mainImageExists) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Main image ID not found"
+                });
+            }
+
+            // Actualizar los flags de imagen principal
+            currentImages = currentImages.map(img => ({
+                ...img,
+                isMainImage: (img._id?.toString() === mainImageId || img._id === mainImageId)
+            }));
+        } else if (!currentImages.some(img => img.isMainImage)) {
+            // Si no hay imagen principal, establecer la primera como principal
+            currentImages[0].isMainImage = true;
+        }
+
+        // 5. Actualizar el documento
+        const updatedFlat = await Flat.findByIdAndUpdate(
+            id,
+            { 
+                $set: { 
+                    images: currentImages,
+                    atUpdated: Date.now()
+                }
+            },
+            { new: true }
+        );
+
+        res.status(200).json({
+            success: true,
+            message: "Images updated successfully",
+            data: updatedFlat
+        });
+    } catch (error) {
+        // En caso de error, limpiar las imágenes subidas
+        if (req.files) {
+            await Promise.all(
+                req.files.map(file => deleteFromCloudinary(file.cloudinary.public_id))
+            );
+        }
+        
+        res.status(400).json({
+            success: false,
+            message: "Error updating images",
+            error: error.message
+        });
+    }
 };
 
 const toggleFavorite = async (req, res) => {
