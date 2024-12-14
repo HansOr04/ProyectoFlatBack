@@ -739,33 +739,54 @@ const updateImages = async (req, res) => {
         // Función auxiliar para parsear campos JSON
         const parseJsonField = (field) => {
             try {
-                return field ? JSON.parse(field) : null;
+                return typeof field === 'string' ? JSON.parse(field) : field;
             } catch (error) {
                 return null;
             }
         };
 
-        // Obtener imágenes actuales y el ID de la imagen principal
+        // Obtener imágenes actuales
         let currentImages = [...flat.images];
         const mainImageId = req.body.mainImageId;
         const imagesToDelete = parseJsonField(req.body.deleteImages) || [];
 
         // 1. Procesar eliminación de imágenes
         if (imagesToDelete.length > 0) {
-            // Encontrar las imágenes a eliminar
+            // Verificar que no se intenta eliminar todas las imágenes
+            const remainingImagesCount = currentImages.length - imagesToDelete.length;
+            if (remainingImagesCount === 0 && (!req.files || req.files.length === 0)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Cannot delete all images without providing new ones"
+                });
+            }
+
+            // Verificar si la imagen principal está entre las que se eliminarán
+            const mainImageToDelete = currentImages.find(img => 
+                img.isMainImage && imagesToDelete.includes(img._id.toString())
+            );
+
+            // Eliminar de Cloudinary
             const imagesToRemove = currentImages.filter(img => 
                 imagesToDelete.includes(img._id.toString())
             );
             
-            // Eliminar de Cloudinary
             await Promise.all(
                 imagesToRemove.map(img => deleteFromCloudinary(img.public_id))
             );
 
-            // Filtrar las imágenes que se mantendrán
+            // Actualizar array de imágenes
             currentImages = currentImages.filter(img => 
                 !imagesToDelete.includes(img._id.toString())
             );
+
+            // Si se eliminó la imagen principal y no se especificó una nueva,
+            // establecer la primera imagen restante como principal
+            if (mainImageToDelete && !mainImageId) {
+                if (currentImages.length > 0) {
+                    currentImages[0].isMainImage = true;
+                }
+            }
         }
 
         // 2. Procesar nuevas imágenes
@@ -774,7 +795,8 @@ const updateImages = async (req, res) => {
                 url: file.cloudinary.url,
                 public_id: file.cloudinary.public_id,
                 description: file.originalname,
-                isMainImage: false
+                isMainImage: false,
+                uploadDate: Date.now()
             }));
 
             currentImages = [...currentImages, ...newImages];
@@ -788,28 +810,27 @@ const updateImages = async (req, res) => {
             });
         }
 
-        // 4. Actualizar imagen principal
+        // 4. Manejar imagen principal
         if (mainImageId) {
-            // Verificar que el ID existe en las imágenes actuales
-            const mainImageExists = currentImages.some(img => 
-                img._id?.toString() === mainImageId || 
-                img._id === mainImageId
-            );
+            let mainImageFound = false;
+            currentImages = currentImages.map(img => {
+                const imgId = img._id?.toString() || img._id;
+                const isMain = imgId === mainImageId;
+                if (isMain) mainImageFound = true;
+                return {
+                    ...img,
+                    isMainImage: isMain
+                };
+            });
 
-            if (!mainImageExists) {
+            if (!mainImageFound) {
                 return res.status(400).json({
                     success: false,
-                    message: "Main image ID not found"
+                    message: "Specified main image ID not found in current images"
                 });
             }
-
-            // Actualizar los flags de imagen principal
-            currentImages = currentImages.map(img => ({
-                ...img,
-                isMainImage: (img._id?.toString() === mainImageId || img._id === mainImageId)
-            }));
         } else if (!currentImages.some(img => img.isMainImage)) {
-            // Si no hay imagen principal, establecer la primera como principal
+            // Si no hay imagen principal definida, establecer la primera como principal
             currentImages[0].isMainImage = true;
         }
 
@@ -823,7 +844,7 @@ const updateImages = async (req, res) => {
                 }
             },
             { new: true }
-        );
+        ).populate('owner', 'firstName lastName email');
 
         res.status(200).json({
             success: true,
