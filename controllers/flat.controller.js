@@ -710,7 +710,7 @@ const updateImages = async (req, res) => {
         const { id } = req.params;
         const flat = await Flat.findById(id);
         
-        // Validar que el flat existe
+        // Validaciones iniciales...
         if (!flat) {
             if (req.files) {
                 await Promise.all(
@@ -723,118 +723,55 @@ const updateImages = async (req, res) => {
             });
         }
 
-        // Validar autorización
-        if (flat.owner.toString() !== req.user.id && !req.user.isAdmin) {
-            if (req.files) {
-                await Promise.all(
-                    req.files.map(file => deleteFromCloudinary(file.cloudinary.public_id))
-                );
-            }
-            return res.status(403).json({
-                success: false,
-                message: "Not authorized"
-            });
-        }
-
-        // Función auxiliar para parsear campos JSON
-        const parseJsonField = (field) => {
-            try {
-                return typeof field === 'string' ? JSON.parse(field) : field;
-            } catch (error) {
-                return null;
-            }
-        };
-
         // Obtener imágenes actuales
         let currentImages = [...flat.images];
         const mainImageId = req.body.mainImageId;
-        const imagesToDelete = parseJsonField(req.body.deleteImages) || [];
 
-        // 1. Procesar eliminación de imágenes
-        if (imagesToDelete.length > 0) {
-            // Verificar que no se intenta eliminar todas las imágenes
-            const remainingImagesCount = currentImages.length - imagesToDelete.length;
-            if (remainingImagesCount === 0 && (!req.files || req.files.length === 0)) {
-                return res.status(400).json({
-                    success: false,
-                    message: "Cannot delete all images without providing new ones"
-                });
-            }
-
-            // Verificar si la imagen principal está entre las que se eliminarán
-            const mainImageToDelete = currentImages.find(img => 
-                img.isMainImage && imagesToDelete.includes(img._id.toString())
-            );
-
-            // Eliminar de Cloudinary
-            const imagesToRemove = currentImages.filter(img => 
-                imagesToDelete.includes(img._id.toString())
-            );
+        // Si se especifica una nueva imagen principal
+        if (mainImageId) {
+            console.log('Actualizando imagen principal:', mainImageId);
             
-            await Promise.all(
-                imagesToRemove.map(img => deleteFromCloudinary(img.public_id))
-            );
+            // Actualizar el estado isMainImage de todas las imágenes
+            currentImages = currentImages.map(img => ({
+                ...img.toObject(), // Convertir el documento de Mongoose a objeto plano
+                isMainImage: img._id.toString() === mainImageId
+            }));
 
-            // Actualizar array de imágenes
-            currentImages = currentImages.filter(img => 
-                !imagesToDelete.includes(img._id.toString())
-            );
-
-            // Si se eliminó la imagen principal y no se especificó una nueva,
-            // establecer la primera imagen restante como principal
-            if (mainImageToDelete && !mainImageId) {
-                if (currentImages.length > 0) {
-                    currentImages[0].isMainImage = true;
-                }
-            }
+            console.log('Imágenes actualizadas:', currentImages);
         }
 
-        // 2. Procesar nuevas imágenes
+        // Si hay nuevas imágenes para agregar
         if (req.files && req.files.length > 0) {
             const newImages = req.files.map(file => ({
                 url: file.cloudinary.url,
                 public_id: file.cloudinary.public_id,
                 description: file.originalname,
-                isMainImage: false,
+                isMainImage: false, // Las nuevas imágenes no son principales por defecto
                 uploadDate: Date.now()
             }));
 
             currentImages = [...currentImages, ...newImages];
         }
 
-        // 3. Validar que haya al menos una imagen
-        if (currentImages.length === 0) {
-            return res.status(400).json({
-                success: false,
-                message: "At least one image is required"
-            });
+        // Procesar eliminación de imágenes si es necesario
+        const imagesToDelete = req.body.deleteImages ? JSON.parse(req.body.deleteImages) : [];
+        if (imagesToDelete.length > 0) {
+            // Eliminar de Cloudinary y filtrar las imágenes
+            await Promise.all(
+                currentImages
+                    .filter(img => imagesToDelete.includes(img._id.toString()))
+                    .map(img => deleteFromCloudinary(img.public_id))
+            );
+
+            currentImages = currentImages.filter(img => !imagesToDelete.includes(img._id.toString()));
         }
 
-        // 4. Manejar imagen principal
-        if (mainImageId) {
-            let mainImageFound = false;
-            currentImages = currentImages.map(img => {
-                const imgId = img._id?.toString() || img._id;
-                const isMain = imgId === mainImageId;
-                if (isMain) mainImageFound = true;
-                return {
-                    ...img,
-                    isMainImage: isMain
-                };
-            });
-
-            if (!mainImageFound) {
-                return res.status(400).json({
-                    success: false,
-                    message: "Specified main image ID not found in current images"
-                });
-            }
-        } else if (!currentImages.some(img => img.isMainImage)) {
-            // Si no hay imagen principal definida, establecer la primera como principal
+        // Asegurar que haya al menos una imagen principal
+        if (!currentImages.some(img => img.isMainImage)) {
             currentImages[0].isMainImage = true;
         }
 
-        // 5. Actualizar el documento
+        // Actualizar el documento en la base de datos
         const updatedFlat = await Flat.findByIdAndUpdate(
             id,
             { 
@@ -846,13 +783,20 @@ const updateImages = async (req, res) => {
             { new: true }
         ).populate('owner', 'firstName lastName email');
 
+        console.log('Flat actualizado en DB:', {
+            images: updatedFlat.images.map(img => ({
+                id: img._id,
+                isMain: img.isMainImage
+            }))
+        });
+
         res.status(200).json({
             success: true,
             message: "Images updated successfully",
             data: updatedFlat
         });
     } catch (error) {
-        // En caso de error, limpiar las imágenes subidas
+        console.error('Error completo:', error);
         if (req.files) {
             await Promise.all(
                 req.files.map(file => deleteFromCloudinary(file.cloudinary.public_id))
