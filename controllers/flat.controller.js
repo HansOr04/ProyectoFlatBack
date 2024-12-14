@@ -238,92 +238,156 @@ const getFlats = async (req, res) => {
             sortBy,
             order = 'desc'
         } = req.query;
- 
+
+        // Validar y convertir parámetros numéricos
+        const validatedPage = Math.max(1, parseInt(page));
+        const validatedLimit = Math.min(50, Math.max(1, parseInt(limit)));
+        const skip = (validatedPage - 1) * validatedLimit;
+
+        // Construir filtros base
         const filters = {};
- 
+
         // Filtro de propietario
         if (owner === 'true' && req.user) {
             filters.owner = req.user.id;
         }
- 
-        // Filtros básicos
-        if (city) filters.city = new RegExp(city, 'i');
-        if (minPrice) filters.rentPrice = { $gte: Number(minPrice) };
-        if (maxPrice) filters.rentPrice = { ...filters.rentPrice, $lte: Number(maxPrice) };
-        if (propertyType) filters.propertyType = propertyType;
-        if (bedrooms) filters.bedrooms = Number(bedrooms);
-        if (bathrooms) filters.bathrooms = Number(bathrooms);
-        if (minArea) filters.areaSize = { $gte: Number(minArea) };
-        if (maxArea) filters.areaSize = { ...filters.areaSize, $lte: Number(maxArea) };
-        if (available === 'true') filters.dateAvailable = { $lte: new Date() };
-        if (minRating) filters['ratings.overall'] = { $gte: Number(minRating) };
- 
+
+        // Filtros básicos con validación de tipos
+        if (city && typeof city === 'string') {
+            filters.city = new RegExp(city.trim(), 'i');
+        }
+
+        // Filtro de precio con validación
+        if (minPrice || maxPrice) {
+            filters.rentPrice = {};
+            if (minPrice && !isNaN(minPrice)) {
+                filters.rentPrice.$gte = Number(minPrice);
+            }
+            if (maxPrice && !isNaN(maxPrice)) {
+                filters.rentPrice.$lte = Number(maxPrice);
+            }
+        }
+
+        // Filtros numéricos con validación
+        if (propertyType && ['apartment', 'house', 'studio', 'loft', 'room'].includes(propertyType)) {
+            filters.propertyType = propertyType;
+        }
+
+        if (bedrooms && !isNaN(bedrooms)) {
+            filters.bedrooms = Number(bedrooms);
+        }
+
+        if (bathrooms && !isNaN(bathrooms)) {
+            filters.bathrooms = Number(bathrooms);
+        }
+
+        // Filtros de área con validación
+        if (minArea || maxArea) {
+            filters.areaSize = {};
+            if (minArea && !isNaN(minArea)) {
+                filters.areaSize.$gte = Number(minArea);
+            }
+            if (maxArea && !isNaN(maxArea)) {
+                filters.areaSize.$lte = Number(maxArea);
+            }
+        }
+
+        // Filtro de disponibilidad
+        if (available === 'true') {
+            filters.dateAvailable = { $lte: new Date() };
+        }
+
+        // Filtro de rating mínimo
+        if (minRating && !isNaN(minRating)) {
+            filters['ratings.overall'] = { $gte: Number(minRating) };
+        }
+
         // Filtros de amenidades
         if (amenities) {
-            const amenityList = amenities.split(',');
-            amenityList.forEach(amenity => {
-                filters[`amenities.${amenity}`] = true;
-            });
+            try {
+                const amenityList = amenities.split(',').map(item => item.trim()).filter(Boolean);
+                amenityList.forEach(amenity => {
+                    // Validar que la amenidad sea válida
+                    if (['wifi', 'tv', 'kitchen', 'washer', 'airConditioning', 'heating',
+                         'workspace', 'pool', 'gym', 'elevator', 'petsAllowed', 'smokeAlarm',
+                         'firstAidKit', 'fireExtinguisher', 'securityCameras'].includes(amenity)) {
+                        filters[`amenities.${amenity}`] = true;
+                    }
+                });
+            } catch (error) {
+                console.error('Error processing amenities:', error);
+            }
         }
- 
-        // Filtro de estacionamiento
+
+        // Filtro de estacionamiento con validación
         if (parking) {
             filters['amenities.parking.available'] = true;
-            if (parking !== 'any') {
+            if (parking !== 'any' && ['free', 'paid', 'street'].includes(parking)) {
                 filters['amenities.parking.type'] = parking;
             }
         }
- 
+
         // Filtro de mascotas
         if (petsAllowed === 'true') {
             filters['amenities.petsAllowed'] = true;
         }
- 
-        const skip = (page - 1) * limit;
- 
-        // Configuración de ordenamiento
+
+        // Configuración de ordenamiento con validación
         let sortOptions = {};
-        switch (sortBy) {
-            case 'price':
-                sortOptions.rentPrice = order === 'desc' ? -1 : 1;
-                break;
-            case 'rating':
-                sortOptions['ratings.overall'] = order === 'desc' ? -1 : 1;
-                break;
-            case 'date':
-                sortOptions.atCreated = order === 'desc' ? -1 : 1;
-                break;
-            default:
-                sortOptions.atCreated = -1;
+        const validSortFields = {
+            price: 'rentPrice',
+            rating: 'ratings.overall',
+            date: 'atCreated'
+        };
+
+        if (sortBy && validSortFields[sortBy]) {
+            sortOptions[validSortFields[sortBy]] = order === 'asc' ? 1 : -1;
+        } else {
+            // Ordenamiento por defecto
+            sortOptions.atCreated = -1;
         }
- 
+
+        // Ejecutar consulta con Promise.all para optimizar
         const [flats, total] = await Promise.all([
             Flat.find(filters)
-                .populate('owner', 'firstName lastName email')
+                .populate('owner', 'firstName lastName email profileImage')
+                .select('-__v')
                 .skip(skip)
-                .limit(parseInt(limit))
+                .limit(validatedLimit)
                 .sort(sortOptions),
             Flat.countDocuments(filters)
         ]);
- 
+
+        // Calcular metadatos de paginación
+        const totalPages = Math.ceil(total / validatedLimit);
+        const hasNextPage = validatedPage < totalPages;
+        const hasPrevPage = validatedPage > 1;
+
         res.status(200).json({
             success: true,
             data: flats,
             pagination: {
                 total,
-                pages: Math.ceil(total / limit),
-                currentPage: parseInt(page),
-                perPage: parseInt(limit)
+                pages: totalPages,
+                currentPage: validatedPage,
+                perPage: validatedLimit,
+                hasNextPage,
+                hasPrevPage
+            },
+            filters: {
+                applied: Object.keys(filters).length > 0,
+                count: Object.keys(filters).length
             }
         });
     } catch (error) {
+        console.error('Error in getFlats:', error);
         res.status(400).json({
             success: false,
             message: "Error fetching flats",
             error: error.message
         });
     }
- };
+};
 
 const getFlatById = async (req, res) => {
    try {
