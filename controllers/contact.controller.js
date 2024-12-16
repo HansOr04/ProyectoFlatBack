@@ -48,7 +48,7 @@ const contactOwner = async (req, res) => {
                     <p>Este es un mensaje automático, por favor no responda directamente a este correo.</p>
                     <p>Para contactar al interesado, utilice el correo electrónico: <a href="mailto:${email}" style="color: #17A5AA;">${email}</a></p>
                     <hr style="border: 1px solid #ddd; margin: 15px 0;">
-                    <p>Saludos,<br>Equipo de Kruger</p>
+                    <p>Saludos,<br>Equipo de IdealSpace</p>
                 </div>
             </div>
         `;
