@@ -8,7 +8,7 @@ const sendEmail = async (options) => {
 
     // Enviar el email usando Resend
     const data = await resend.emails.send({
-      from: 'Kruger Backend <onboarding@resend.dev>', // Puedes personalizar esto cuando tengas un dominio verificado
+      from: 'Ideal Space <onboarding@resend.dev>', // Puedes personalizar esto cuando tengas un dominio verificado
       to: options.email,
       subject: options.subject,
       text: options.message,
