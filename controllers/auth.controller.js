@@ -256,7 +256,7 @@ const forgotPasswordRequest = async (req, res) => {
         await user.save({ validateBeforeSave: false });
 
         // Generar URL para resetear contraseña
-        const resetUrl = `http://localhost:5173/reset-password/${resetToken}`;
+        const resetUrl = `https://proyectoflatback.onrender.com/reset-password/${resetToken}`;
 
         // Enviar correo al usuario
         try {
