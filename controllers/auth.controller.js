@@ -256,7 +256,7 @@ const forgotPasswordRequest = async (req, res) => {
         await user.save({ validateBeforeSave: false });
 
         // Generar URL para resetear contraseña
-        const resetUrl = `https://proyectoflatback.onrender.com/reset-password/${resetToken}`;
+        const resetUrl = `https://idealspace.netlify.app/reset-password/${resetToken}`;
 
         // Enviar correo al usuario
         try {
