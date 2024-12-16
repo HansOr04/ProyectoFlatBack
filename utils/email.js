@@ -1,29 +1,25 @@
-import nodemailer from "nodemailer";
+import { Resend } from 'resend';
 import configs from "../configs/configs.js";
-//En las options vamos a recibir el email a donde vamos a enviar el correo
-//Vamos a recibir el asunto del correo
-//Vamos a recibir el mensaje del correo
-//Options es un objeto que tiene las propiedades email, subject y message
+
 const sendEmail = async (options) => {
-  //Vamos a crear la integracion con el servidor de mailtrap usando nodemailer
-  const transporter = nodemailer.createTransport({
-    host: "live.smtp.mailtrap.io",
-    port: 2525,
-    auth: {
-      user: configs.MAILTRAP_USER,
-      pass: configs.MAILTRAP_PASS,
-    },
-  });
+  try {
+    // Crear instancia de Resend con la API key
+    const resend = new Resend(configs.RESEND_API_KEY);
 
-  //Vamos a armar las opciones de envio de nuestro correo
-  const mailOptions = {
-    from: '"Kruger Backend" <no-reply@demomailtrap.com>',
-    to: options.email, //El destinatario esta en el objeto options
-    subject: options.subject,
-    text: options.message,
-  };
+    // Enviar el email usando Resend
+    const data = await resend.emails.send({
+      from: 'Kruger Backend <onboarding@resend.dev>', // Puedes personalizar esto cuando tengas un dominio verificado
+      to: options.email,
+      subject: options.subject,
+      text: options.message,
+      html: options.htmlContent || options.html || `<p>${options.message}</p>`, // Soportamos htmlContent o html
+    });
 
-  await transporter.sendMail(mailOptions);
+    return data;
+  } catch (error) {
+    console.error('Error sending email:', error);
+    throw new Error('Failed to send email');
+  }
 };
 
 export default sendEmail;

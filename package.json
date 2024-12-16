@@ -23,6 +23,7 @@
     "multer": "^1.4.5-lts.1",
     "multer-storage-cloudinary": "^4.0.0",
     "path": "^0.12.7",
+    "resend": "^4.0.1",
     "sharp": "^0.33.5",
     "sib-api-v3-sdk": "^8.5.0",
     "validator": "^13.12.0",
