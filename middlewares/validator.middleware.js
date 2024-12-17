@@ -338,9 +338,10 @@ const validateMessage = (req, res, next) => {
 };
 
 
-const validateUserUpdate = (req, res, next) => {
+const validateUserUpdate = async (req, res, next) => {
     try {
         const { email, firstName, lastName, birthDate } = req.body;
+        const userId = req.params.id; // Get the current user's ID from params
 
         // Validar email si se proporciona
         if (email) {
@@ -349,6 +350,15 @@ const validateUserUpdate = (req, res, next) => {
                 return res.status(400).json({
                     success: false,
                     message: "Invalid email format"
+                });
+            }
+
+            // Verificar si el email es único
+            const existingUser = await User.findOne({ email, _id: { $ne: userId } });
+            if (existingUser) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Email already in use"
                 });
             }
         }
@@ -372,24 +382,48 @@ const validateUserUpdate = (req, res, next) => {
         if (birthDate) {
             const birthDateObj = new Date(birthDate);
             const today = new Date();
-            const age = today.getFullYear() - birthDateObj.getFullYear();
             
-            if (isNaN(birthDateObj.getTime()) || age < 18) {
+            // Verificar que la fecha sea válida
+            if (isNaN(birthDateObj.getTime())) {
                 return res.status(400).json({
                     success: false,
-                    message: "Invalid birth date or user must be at least 18 years old"
+                    message: "Invalid birth date format"
+                });
+            }
+
+            // Calcular edad
+            let age = today.getFullYear() - birthDateObj.getFullYear();
+            const monthDiff = today.getMonth() - birthDateObj.getMonth();
+            
+            if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDateObj.getDate())) {
+                age--;
+            }
+            
+            // Validar rango de edad (18-120 años)
+            if (age < 18) {
+                return res.status(400).json({
+                    success: false,
+                    message: "User must be at least 18 years old"
+                });
+            }
+
+            if (age > 120) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid age: must be less than 120 years"
                 });
             }
         }
-        //validacion de la contraseña que tenga una mayuscula una minuscula y un numero y un caracter espacial
+
+        // Validación de la contraseña si se proporciona
         if (req.body.password) {
-            const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&?]{8,}$/;
-                    if (!passwordRegex.test(req.body.password)) {
-                        return res.status(400).json({
-                            success: false,
-                            message: "Password must be at least 8 characters long, contain at least one uppercase letter, one lowercase letter, one number, and one special character"
-                        });
-                    }
+            const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+            if (!passwordRegex.test(req.body.password)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Password must be at least 8 characters long, contain at least one uppercase letter, one lowercase letter, one number, and one special character"
+                });
+            }
         }
 
         next();
