@@ -100,6 +100,69 @@ const updateUser = async (req, res) => {
         });
     }
 };
+const getUsers = async (req, res) => {
+    try {
+        if (!req.user.isAdmin) {
+            return res.status(403).json({
+                success: false,
+                message: "Not authorized"
+            });
+        }
+
+        const users = await User.find({ atDeleted: null })
+            .select('-password')
+            .populate('favoriteFlats')
+            .populate('flatsOwned');
+
+        const usersWithCounts = users.map(user => ({
+            ...user.toObject(),
+            totalFlats: user.flatsOwned.length
+        }));
+
+        res.status(200).json({
+            success: true,
+            data: usersWithCounts
+        });
+    } catch (error) {
+        res.status(400).json({
+            success: false,
+            message: "Error fetching users",
+            error: error.message
+        });
+    }
+};
+
+const getProfile = async (req, res) => {
+    try {
+        const userId = req.user.id;
+
+        const user = await User.findById(userId)
+            .select('-password')
+            .populate('favoriteFlats')
+            .populate('flatsOwned');
+
+        if (!user || user.atDeleted) {
+            return res.status(404).json({
+                success: false,
+                message: "User not found"
+            });
+        }
+
+        const userData = user.toObject();
+        userData.totalFlats = user.flatsOwned.length;
+
+        res.status(200).json({
+            success: true,
+            data: userData
+        });
+    } catch (error) {
+        res.status(400).json({
+            success: false,
+            message: "Error fetching profile",
+            error: error.message
+        });
+    }
+};
 
 const getUserById = async (req, res) => {
     try {
