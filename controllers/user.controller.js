@@ -342,7 +342,6 @@ const deleteUser = async (req, res) => {
             console.log(`Encontrados ${userFlats.length} flats para eliminar`);
 
             // 2. Eliminar imágenes
-            const deleteImagePromises = [];
             let deletedImages = 0;
             
             // 2.1 Eliminar imagen de perfil
@@ -374,7 +373,7 @@ const deleteUser = async (req, res) => {
             }
             console.log(`Eliminadas ${deletedImages} imágenes en total`);
 
-            // 3. Eliminar mensajes
+            // 3. Eliminar mensajes/reviews
             const messagesResult = await Message.deleteMany({ 
                 flatID: { $in: userFlats.map(flat => flat._id) } 
             });
@@ -415,6 +414,7 @@ const deleteUser = async (req, res) => {
                 stack: deleteError.stack
             });
             
+            // Intentar revertir el estado del usuario si fue marcado como eliminado
             if (user.atDeleted) {
                 user.atDeleted = null;
                 await user.save();
