@@ -5,98 +5,92 @@ import { Flat } from "../models/flat.models.js";
 const updateUser = async (req, res) => {
     try {
         const { id } = req.params;
-        // Agregar más logging
-        console.log('Request Body:', req.body);
-        console.log('Request User:', req.user);
-        console.log('Request Params:', req.params);
-        console.log('Update ID:', id);
+        console.log('Body:', req.body);
+        console.log('File:', req.file);
 
-        // Validar ID
-        if (!id) {
-            return res.status(400).json({
+        // Verificar autorización
+        if (id !== req.user.id && !req.user.isAdmin) {
+            return res.status(403).json({
                 success: false,
-                message: "ID de usuario no proporcionado"
+                message: "Not authorized"
             });
         }
 
-        // Verificar que el usuario existe
+        // Primero buscar el usuario existente
         const existingUser = await User.findById(id);
         if (!existingUser) {
             return res.status(404).json({
                 success: false,
-                message: "Usuario no encontrado",
-                details: { id }
+                message: "User not found"
             });
         }
 
-        // Verificar autorización con más detalles
-        if (id !== req.user.id && !req.user.isAdmin) {
-            return res.status(403).json({
-                success: false,
-                message: "No autorizado para actualizar este usuario",
-                details: {
-                    requestedId: id,
-                    userId: req.user.id,
-                    isAdmin: req.user.isAdmin
-                }
-            });
-        }
+        // Preparar los datos de actualización
+        let updateData = { ...req.body };
 
-        const updateData = { ...req.body };
-        console.log('Update Data:', updateData);
-
-        // Solo permitir actualización de isAdmin si el usuario es admin
-        if (!req.user.isAdmin) {
-            delete updateData.isAdmin;
+        // No permitir actualización del email si no es admin
+        if (updateData.hasOwnProperty('email') && !req.user.isAdmin) {
+            delete updateData.email;
         }
 
         // No permitir actualización de campos sensibles
         delete updateData.password;
+        delete updateData.isAdmin;
 
-        // Verificar que hay datos para actualizar
+        // Si hay archivo de imagen
+        if (req.file) {
+            if (existingUser.profileImageId && 
+                existingUser.profileImageId !== "uploads/profiles/default/default-profile") {
+                try {
+                    await deleteFromCloudinary(existingUser.profileImageId);
+                } catch (error) {
+                    console.error('Error eliminando imagen anterior:', error);
+                }
+            }
+            updateData.profileImage = req.file.path;
+            updateData.profileImageId = req.file.filename;
+        }
+
+        // Verificar si hay datos para actualizar
         if (Object.keys(updateData).length === 0) {
             return res.status(400).json({
                 success: false,
-                message: "No se proporcionaron datos para actualizar"
+                message: "No data provided for update"
             });
         }
 
-        // Intentar actualizar
+        // Realizar la actualización
         const updatedUser = await User.findByIdAndUpdate(
             id,
-            { 
+            {
                 ...updateData,
                 atUpdated: Date.now()
             },
-            { 
+            {
                 new: true,
-                runValidators: true 
+                runValidators: true
             }
         ).select('-password');
 
         if (!updatedUser) {
             return res.status(400).json({
                 success: false,
-                message: "Error al actualizar el usuario",
-                details: updateData
+                message: "Failed to update user"
             });
         }
 
-        console.log('Updated User:', updatedUser);
-
         res.status(200).json({
             success: true,
-            message: "Usuario actualizado exitosamente",
+            message: "User updated successfully",
             data: updatedUser
         });
 
     } catch (error) {
-        console.error('Error en updateUser:', error);
+        console.error('Error in updateUser:', error);
         res.status(400).json({
             success: false,
-            message: "Error al actualizar usuario",
-            error: error.message,
-            stack: error.stack
+            message: "Error updating user",
+            error: error.message
         });
     }
 };
