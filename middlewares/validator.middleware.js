@@ -1,4 +1,5 @@
 import validator from 'validator';
+import { User } from '../models/user.model.js';
 
 const validateRegister = (req, res, next) => {
     try {
@@ -341,7 +342,7 @@ const validateMessage = (req, res, next) => {
 const validateUserUpdate = async (req, res, next) => {
     try {
         const { email, firstName, lastName, birthDate } = req.body;
-        const userId = req.params.id; // Get the current user's ID from params
+        const userId = req.params.id;
 
         // Validar email si se proporciona
         if (email) {
@@ -349,16 +350,21 @@ const validateUserUpdate = async (req, res, next) => {
             if (!emailRegex.test(email)) {
                 return res.status(400).json({
                     success: false,
-                    message: "Invalid email format"
+                    message: "Formato de email inválido"
                 });
             }
 
             // Verificar si el email es único
-            const existingUser = await User.findOne({ email, _id: { $ne: userId } });
+            const existingUser = await User.findOne({ 
+                email, 
+                _id: { $ne: userId },
+                atDeleted: null  // Asegurarse de que el usuario no está eliminado
+            });
+            
             if (existingUser) {
                 return res.status(400).json({
                     success: false,
-                    message: "Email already in use"
+                    message: "El email ya está en uso"
                 });
             }
         }
@@ -367,14 +373,14 @@ const validateUserUpdate = async (req, res, next) => {
         if (firstName && firstName.length < 2) {
             return res.status(400).json({
                 success: false,
-                message: "First name must be at least 2 characters long"
+                message: "El nombre debe tener al menos 2 caracteres"
             });
         }
 
         if (lastName && lastName.length < 2) {
             return res.status(400).json({
                 success: false,
-                message: "Last name must be at least 2 characters long"
+                message: "El apellido debe tener al menos 2 caracteres"
             });
         }
 
@@ -383,15 +389,13 @@ const validateUserUpdate = async (req, res, next) => {
             const birthDateObj = new Date(birthDate);
             const today = new Date();
             
-            // Verificar que la fecha sea válida
             if (isNaN(birthDateObj.getTime())) {
                 return res.status(400).json({
                     success: false,
-                    message: "Invalid birth date format"
+                    message: "Formato de fecha de nacimiento inválido"
                 });
             }
 
-            // Calcular edad
             let age = today.getFullYear() - birthDateObj.getFullYear();
             const monthDiff = today.getMonth() - birthDateObj.getMonth();
             
@@ -399,38 +403,27 @@ const validateUserUpdate = async (req, res, next) => {
                 age--;
             }
             
-            // Validar rango de edad (18-120 años)
             if (age < 18) {
                 return res.status(400).json({
                     success: false,
-                    message: "User must be at least 18 years old"
+                    message: "El usuario debe tener al menos 18 años"
                 });
             }
 
             if (age > 120) {
                 return res.status(400).json({
                     success: false,
-                    message: "Invalid age: must be less than 120 years"
-                });
-            }
-        }
-
-        // Validación de la contraseña si se proporciona
-        if (req.body.password) {
-            const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
-            if (!passwordRegex.test(req.body.password)) {
-                return res.status(400).json({
-                    success: false,
-                    message: "Password must be at least 8 characters long, contain at least one uppercase letter, one lowercase letter, one number, and one special character"
+                    message: "La edad debe ser menor a 120 años"
                 });
             }
         }
 
         next();
     } catch (error) {
+        console.error('Error en validateUserUpdate:', error);
         res.status(400).json({
             success: false,
-            message: "Error in validation",
+            message: "Error en la validación",
             error: error.message
         });
     }
