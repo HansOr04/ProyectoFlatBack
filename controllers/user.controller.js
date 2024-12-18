@@ -1,5 +1,6 @@
 
 import { User } from "../models/user.model.js";
+import { Message } from "../models/message.model.js";
 import { deleteFromCloudinary } from "../configs/cloudinary.config.js";
 import { Flat } from "../models/flat.models.js";
 const updateUser = async (req, res) => {
