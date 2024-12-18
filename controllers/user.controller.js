@@ -325,13 +325,33 @@ const deleteUser = async (req, res) => {
             await deleteFromCloudinary(user.profileImageId);
         }
 
-        // Actualizar el estado de los flats asociados
-        await Flat.updateMany(
-            { _id: { $in: user.flatsOwned } },
-            { $set: { atDeleted: new Date() } }
+        // Obtener todos los flats del usuario
+        const userFlats = await Flat.find({ owner: id });
+
+        // Eliminar todas las imágenes de los flats del usuario de Cloudinary
+        for (const flat of userFlats) {
+            await Promise.all(
+                flat.images.map(image => deleteFromCloudinary(image.public_id))
+            );
+        }
+
+        // Eliminar todos los mensajes/reviews asociados a los flats del usuario
+        await Message.deleteMany({ 
+            flatID: { 
+                $in: userFlats.map(flat => flat._id) 
+            } 
+        });
+
+        // Eliminar referencias de los flats en favoritos de otros usuarios
+        await User.updateMany(
+            { favoriteFlats: { $in: userFlats.map(flat => flat._id) } },
+            { $pull: { favoriteFlats: { $in: userFlats.map(flat => flat._id) } } }
         );
 
-        // Realizar borrado lógico
+        // Eliminar todos los flats del usuario
+        await Flat.deleteMany({ owner: id });
+
+        // Realizar borrado lógico del usuario
         user.atDeleted = new Date();
         user.profileImage = "https://res.cloudinary.com/dzerzykxk/image/upload/v1/uploads/profiles/default/default-profile.jpg";
         user.profileImageId = "uploads/profiles/default/default-profile";
@@ -339,7 +359,7 @@ const deleteUser = async (req, res) => {
 
         res.status(200).json({
             success: true,
-            message: "User and associated flats deleted successfully"
+            message: "User and all associated data deleted successfully"
         });
     } catch (error) {
         res.status(400).json({
