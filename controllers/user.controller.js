@@ -303,98 +303,138 @@ const removeFromFavorites = async (req, res) => {
 const deleteUser = async (req, res) => {
     try {
         const { id } = req.params;
+        console.log('Iniciando proceso de eliminación para usuario:', id);
 
+        // Validar autorización
         if (id !== req.user.id && !req.user.isAdmin) {
+            console.log('Intento de eliminación no autorizado:', {
+                targetId: id,
+                requestingUserId: req.user.id,
+                isAdmin: req.user.isAdmin
+            });
             return res.status(403).json({
                 success: false,
                 message: "Not authorized"
             });
         }
 
+        // Buscar usuario
         const user = await User.findById(id);
+        console.log('Usuario encontrado:', user ? 'Sí' : 'No');
+
         if (!user || user.atDeleted) {
+            console.log('Usuario no encontrado o ya eliminado:', {
+                exists: !!user,
+                isDeleted: user?.atDeleted
+            });
             return res.status(404).json({
                 success: false,
                 message: "User not found"
             });
         }
 
-        // Comenzar un bloque try-catch específico para el borrado
+        // Comenzar proceso de eliminación
         try {
-            // 1. Obtener todos los flats del usuario
-            const userFlats = await Flat.find({ owner: id, atDeleted: null });
+            console.log('Iniciando proceso de eliminación de datos asociados');
 
-            // 2. Eliminar imágenes de Cloudinary
+            // 1. Obtener flats del usuario
+            const userFlats = await Flat.find({ owner: id, atDeleted: null });
+            console.log(`Encontrados ${userFlats.length} flats para eliminar`);
+
+            // 2. Eliminar imágenes
             const deleteImagePromises = [];
+            let deletedImages = 0;
             
-            // 2.1 Eliminar imagen de perfil si no es la default
+            // 2.1 Eliminar imagen de perfil
             if (user.profileImageId && 
                 user.profileImageId !== "uploads/profiles/default/default-profile") {
-                deleteImagePromises.push(deleteFromCloudinary(user.profileImageId));
+                try {
+                    await deleteFromCloudinary(user.profileImageId);
+                    deletedImages++;
+                    console.log('Imagen de perfil eliminada');
+                } catch (imageError) {
+                    console.error('Error al eliminar imagen de perfil:', imageError);
+                }
             }
 
-            // 2.2 Eliminar imágenes de todos los flats
-            userFlats.forEach(flat => {
-                flat.images.forEach(image => {
-                    deleteImagePromises.push(deleteFromCloudinary(image.public_id));
-                });
-            });
-
-            // Ejecutar todas las eliminaciones de imágenes
-            await Promise.allSettled(deleteImagePromises);
-
-            // 3. Eliminar mensajes/reviews asociados a los flats
-            await Message.deleteMany({ 
-                flatID: { 
-                    $in: userFlats.map(flat => flat._id) 
-                } 
-            });
-
-            // 4. Remover referencias de favoritos en otros usuarios
-            await User.updateMany(
-                { favoriteFlats: { $in: userFlats.map(flat => flat._id) } },
-                { 
-                    $pull: { 
-                        favoriteFlats: { 
-                            $in: userFlats.map(flat => flat._id) 
-                        } 
-                    } 
+            // 2.2 Eliminar imágenes de flats
+            for (const flat of userFlats) {
+                for (const image of flat.images) {
+                    try {
+                        await deleteFromCloudinary(image.public_id);
+                        deletedImages++;
+                    } catch (imageError) {
+                        console.error('Error al eliminar imagen de flat:', {
+                            flatId: flat._id,
+                            imageId: image.public_id,
+                            error: imageError.message
+                        });
+                    }
                 }
+            }
+            console.log(`Eliminadas ${deletedImages} imágenes en total`);
+
+            // 3. Eliminar mensajes
+            const messagesResult = await Message.deleteMany({ 
+                flatID: { $in: userFlats.map(flat => flat._id) } 
+            });
+            console.log(`Eliminados ${messagesResult.deletedCount} mensajes`);
+
+            // 4. Eliminar referencias de favoritos
+            const favoritesResult = await User.updateMany(
+                { favoriteFlats: { $in: userFlats.map(flat => flat._id) } },
+                { $pull: { favoriteFlats: { $in: userFlats.map(flat => flat._id) } } }
             );
+            console.log(`Actualizadas ${favoritesResult.modifiedCount} referencias de favoritos`);
 
-            // 5. Eliminar permanentemente los flats
-            await Flat.deleteMany({ owner: id });
+            // 5. Eliminar flats
+            const flatsResult = await Flat.deleteMany({ owner: id });
+            console.log(`Eliminados ${flatsResult.deletedCount} flats`);
 
-            // 6. Realizar borrado lógico del usuario
+            // 6. Marcar usuario como eliminado
             user.atDeleted = new Date();
             user.profileImage = "https://res.cloudinary.com/dzerzykxk/image/upload/v1/uploads/profiles/default/default-profile.jpg";
             user.profileImageId = "uploads/profiles/default/default-profile";
             await user.save();
+            console.log('Usuario marcado como eliminado');
 
             res.status(200).json({
                 success: true,
-                message: "User and all associated data deleted successfully"
+                message: "User and all associated data deleted successfully",
+                details: {
+                    deletedImages,
+                    deletedMessages: messagesResult.deletedCount,
+                    updatedFavorites: favoritesResult.modifiedCount,
+                    deletedFlats: flatsResult.deletedCount
+                }
             });
 
         } catch (deleteError) {
-            // Log del error específico para debugging
-            console.error('Error during deletion process:', deleteError);
+            console.error('Error durante el proceso de eliminación:', {
+                error: deleteError.message,
+                stack: deleteError.stack
+            });
             
-            // Revertir el borrado lógico si ocurrió después de ese punto
             if (user.atDeleted) {
                 user.atDeleted = null;
                 await user.save();
+                console.log('Revertido el estado de eliminación del usuario');
             }
 
-            throw new Error('Error during deletion process');
+            throw new Error(`Error during deletion process: ${deleteError.message}`);
         }
 
     } catch (error) {
-        console.error('Error in deleteUser:', error);
+        console.error('Error principal en deleteUser:', {
+            message: error.message,
+            stack: error.stack
+        });
+        
         res.status(400).json({
             success: false,
-            message: error.message || "Error deleting user and associated data",
-            error: error.toString()
+            message: "Error deleting user and associated data",
+            error: error.message,
+            details: error.toString()
         });
     }
 };
