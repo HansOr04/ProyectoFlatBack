@@ -319,53 +319,82 @@ const deleteUser = async (req, res) => {
             });
         }
 
-        // Eliminar imagen de perfil si existe y no es la imagen por defecto
-        if (user.profileImageId && 
-            user.profileImageId !== "uploads/profiles/default/default-profile") {
-            await deleteFromCloudinary(user.profileImageId);
-        }
+        // Comenzar un bloque try-catch específico para el borrado
+        try {
+            // 1. Obtener todos los flats del usuario
+            const userFlats = await Flat.find({ owner: id, atDeleted: null });
 
-        // Obtener todos los flats del usuario
-        const userFlats = await Flat.find({ owner: id });
+            // 2. Eliminar imágenes de Cloudinary
+            const deleteImagePromises = [];
+            
+            // 2.1 Eliminar imagen de perfil si no es la default
+            if (user.profileImageId && 
+                user.profileImageId !== "uploads/profiles/default/default-profile") {
+                deleteImagePromises.push(deleteFromCloudinary(user.profileImageId));
+            }
 
-        // Eliminar todas las imágenes de los flats del usuario de Cloudinary
-        for (const flat of userFlats) {
-            await Promise.all(
-                flat.images.map(image => deleteFromCloudinary(image.public_id))
+            // 2.2 Eliminar imágenes de todos los flats
+            userFlats.forEach(flat => {
+                flat.images.forEach(image => {
+                    deleteImagePromises.push(deleteFromCloudinary(image.public_id));
+                });
+            });
+
+            // Ejecutar todas las eliminaciones de imágenes
+            await Promise.allSettled(deleteImagePromises);
+
+            // 3. Eliminar mensajes/reviews asociados a los flats
+            await Message.deleteMany({ 
+                flatID: { 
+                    $in: userFlats.map(flat => flat._id) 
+                } 
+            });
+
+            // 4. Remover referencias de favoritos en otros usuarios
+            await User.updateMany(
+                { favoriteFlats: { $in: userFlats.map(flat => flat._id) } },
+                { 
+                    $pull: { 
+                        favoriteFlats: { 
+                            $in: userFlats.map(flat => flat._id) 
+                        } 
+                    } 
+                }
             );
+
+            // 5. Eliminar permanentemente los flats
+            await Flat.deleteMany({ owner: id });
+
+            // 6. Realizar borrado lógico del usuario
+            user.atDeleted = new Date();
+            user.profileImage = "https://res.cloudinary.com/dzerzykxk/image/upload/v1/uploads/profiles/default/default-profile.jpg";
+            user.profileImageId = "uploads/profiles/default/default-profile";
+            await user.save();
+
+            res.status(200).json({
+                success: true,
+                message: "User and all associated data deleted successfully"
+            });
+
+        } catch (deleteError) {
+            // Log del error específico para debugging
+            console.error('Error during deletion process:', deleteError);
+            
+            // Revertir el borrado lógico si ocurrió después de ese punto
+            if (user.atDeleted) {
+                user.atDeleted = null;
+                await user.save();
+            }
+
+            throw new Error('Error during deletion process');
         }
 
-        // Eliminar todos los mensajes/reviews asociados a los flats del usuario
-        await Message.deleteMany({ 
-            flatID: { 
-                $in: userFlats.map(flat => flat._id) 
-            } 
-        });
-
-        // Eliminar referencias de los flats en favoritos de otros usuarios
-        await User.updateMany(
-            { favoriteFlats: { $in: userFlats.map(flat => flat._id) } },
-            { $pull: { favoriteFlats: { $in: userFlats.map(flat => flat._id) } } }
-        );
-
-        // Eliminar todos los flats del usuario
-        await Flat.deleteMany({ owner: id });
-
-        // Realizar borrado lógico del usuario
-        user.atDeleted = new Date();
-        user.profileImage = "https://res.cloudinary.com/dzerzykxk/image/upload/v1/uploads/profiles/default/default-profile.jpg";
-        user.profileImageId = "uploads/profiles/default/default-profile";
-        await user.save();
-
-        res.status(200).json({
-            success: true,
-            message: "User and all associated data deleted successfully"
-        });
     } catch (error) {
+        console.error('Error in deleteUser:', error);
         res.status(400).json({
             success: false,
-            message: "Error deleting user",
-            error: error.message
+            message: error.message || "Error deleting user and associated data",
+            error: error.toString()
         });
     }
 };
