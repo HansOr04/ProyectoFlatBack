@@ -5,32 +5,45 @@ import { Flat } from "../models/flat.models.js";
 const updateUser = async (req, res) => {
     try {
         const { id } = req.params;
-        console.log('Body:', req.body);
-        console.log('File:', req.file);
+        // Agregar más logging
+        console.log('Request Body:', req.body);
+        console.log('Request User:', req.user);
+        console.log('Request Params:', req.params);
+        console.log('Update ID:', id);
 
-        // Verificar si el usuario existe
+        // Validar ID
+        if (!id) {
+            return res.status(400).json({
+                success: false,
+                message: "ID de usuario no proporcionado"
+            });
+        }
+
+        // Verificar que el usuario existe
         const existingUser = await User.findById(id);
         if (!existingUser) {
             return res.status(404).json({
                 success: false,
-                message: "User not found"
+                message: "Usuario no encontrado",
+                details: { id }
             });
         }
 
-        // Verificar autorización básica
+        // Verificar autorización con más detalles
         if (id !== req.user.id && !req.user.isAdmin) {
             return res.status(403).json({
                 success: false,
-                message: "Not authorized to update this user"
+                message: "No autorizado para actualizar este usuario",
+                details: {
+                    requestedId: id,
+                    userId: req.user.id,
+                    isAdmin: req.user.isAdmin
+                }
             });
         }
 
         const updateData = { ...req.body };
-
-        // Verificar actualización de email
-        if (updateData.hasOwnProperty('email') && !req.user.isAdmin) {
-            delete updateData.email; // Si no es admin, ignorar la actualización del email
-        }
+        console.log('Update Data:', updateData);
 
         // Solo permitir actualización de isAdmin si el usuario es admin
         if (!req.user.isAdmin) {
@@ -40,35 +53,15 @@ const updateUser = async (req, res) => {
         // No permitir actualización de campos sensibles
         delete updateData.password;
 
-        // Actualizar imagen de perfil si se proporcionó
-        if (req.file) {
-            console.log('Procesando nueva imagen:', req.file);
-            
-            if (existingUser.profileImageId && 
-                existingUser.profileImageId !== "uploads/profiles/default/default-profile") {
-                try {
-                    await deleteFromCloudinary(existingUser.profileImageId);
-                } catch (error) {
-                    console.error('Error eliminando imagen anterior:', error);
-                }
-            }
-
-            const public_id = req.file.filename;
-            updateData.profileImage = req.file.path;
-            updateData.profileImageId = public_id;
-        }
-
-        // Si no hay datos para actualizar después de las validaciones
+        // Verificar que hay datos para actualizar
         if (Object.keys(updateData).length === 0) {
             return res.status(400).json({
                 success: false,
-                message: "No valid fields to update"
+                message: "No se proporcionaron datos para actualizar"
             });
         }
 
-        console.log('Datos de actualización finales:', updateData);
-
-        // Actualizar usuario
+        // Intentar actualizar
         const updatedUser = await User.findByIdAndUpdate(
             id,
             { 
@@ -82,12 +75,18 @@ const updateUser = async (req, res) => {
         ).select('-password');
 
         if (!updatedUser) {
-            throw new Error('Error al actualizar el usuario');
+            return res.status(400).json({
+                success: false,
+                message: "Error al actualizar el usuario",
+                details: updateData
+            });
         }
+
+        console.log('Updated User:', updatedUser);
 
         res.status(200).json({
             success: true,
-            message: "User updated successfully",
+            message: "Usuario actualizado exitosamente",
             data: updatedUser
         });
 
@@ -95,71 +94,9 @@ const updateUser = async (req, res) => {
         console.error('Error en updateUser:', error);
         res.status(400).json({
             success: false,
-            message: error.message || "Error updating user",
-            error: error.message
-        });
-    }
-};
-const getUsers = async (req, res) => {
-    try {
-        if (!req.user.isAdmin) {
-            return res.status(403).json({
-                success: false,
-                message: "Not authorized"
-            });
-        }
-
-        const users = await User.find({ atDeleted: null })
-            .select('-password')
-            .populate('favoriteFlats')
-            .populate('flatsOwned');
-
-        const usersWithCounts = users.map(user => ({
-            ...user.toObject(),
-            totalFlats: user.flatsOwned.length
-        }));
-
-        res.status(200).json({
-            success: true,
-            data: usersWithCounts
-        });
-    } catch (error) {
-        res.status(400).json({
-            success: false,
-            message: "Error fetching users",
-            error: error.message
-        });
-    }
-};
-
-const getProfile = async (req, res) => {
-    try {
-        const userId = req.user.id;
-
-        const user = await User.findById(userId)
-            .select('-password')
-            .populate('favoriteFlats')
-            .populate('flatsOwned');
-
-        if (!user || user.atDeleted) {
-            return res.status(404).json({
-                success: false,
-                message: "User not found"
-            });
-        }
-
-        const userData = user.toObject();
-        userData.totalFlats = user.flatsOwned.length;
-
-        res.status(200).json({
-            success: true,
-            data: userData
-        });
-    } catch (error) {
-        res.status(400).json({
-            success: false,
-            message: "Error fetching profile",
-            error: error.message
+            message: "Error al actualizar usuario",
+            error: error.message,
+            stack: error.stack
         });
     }
 };
