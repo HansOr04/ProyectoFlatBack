@@ -5,31 +5,40 @@ import { Flat } from "../models/flat.models.js";
 const updateUser = async (req, res) => {
     try {
         const { id } = req.params;
-        console.log('Body:', req.body);
-        console.log('File:', req.file);
+        console.log('Update request:', {
+            targetId: id,
+            requestingUser: {
+                id: req.user.id,
+                isAdmin: req.user.isAdmin
+            },
+            updateData: req.body
+        });
 
-        // Verificar autorización
-        if (id !== req.user.id && !req.user.isAdmin) {
-            return res.status(403).json({
+        // Primero buscar el usuario existente que se quiere actualizar
+        const targetUser = await User.findById(id);
+        if (!targetUser) {
+            return res.status(404).json({
                 success: false,
-                message: "Not authorized"
+                message: "Usuario no encontrado"
             });
         }
 
-        // Primero buscar el usuario existente
-        const existingUser = await User.findById(id);
-        if (!existingUser) {
-            return res.status(404).json({
+        // Verificar autorización
+        const isAdmin = req.user.isAdmin;
+        const isSelfUpdate = id === req.user.id;
+
+        if (!isSelfUpdate && !isAdmin) {
+            return res.status(403).json({
                 success: false,
-                message: "User not found"
+                message: "No autorizado para actualizar este usuario"
             });
         }
 
         // Preparar los datos de actualización
         let updateData = { ...req.body };
 
-        // No permitir actualización del email si no es admin
-        if (updateData.hasOwnProperty('email') && !req.user.isAdmin) {
+        // Validación especial para el email
+        if (updateData.hasOwnProperty('email') && !isAdmin) {
             delete updateData.email;
         }
 
@@ -39,10 +48,10 @@ const updateUser = async (req, res) => {
 
         // Si hay archivo de imagen
         if (req.file) {
-            if (existingUser.profileImageId && 
-                existingUser.profileImageId !== "uploads/profiles/default/default-profile") {
+            if (targetUser.profileImageId && 
+                targetUser.profileImageId !== "uploads/profiles/default/default-profile") {
                 try {
-                    await deleteFromCloudinary(existingUser.profileImageId);
+                    await deleteFromCloudinary(targetUser.profileImageId);
                 } catch (error) {
                     console.error('Error eliminando imagen anterior:', error);
                 }
@@ -55,7 +64,7 @@ const updateUser = async (req, res) => {
         if (Object.keys(updateData).length === 0) {
             return res.status(400).json({
                 success: false,
-                message: "No data provided for update"
+                message: "No se proporcionaron datos para actualizar"
             });
         }
 
@@ -75,22 +84,21 @@ const updateUser = async (req, res) => {
         if (!updatedUser) {
             return res.status(400).json({
                 success: false,
-                message: "Failed to update user"
+                message: "Error al actualizar el usuario"
             });
         }
 
         res.status(200).json({
             success: true,
-            message: "User updated successfully",
+            message: "Usuario actualizado exitosamente",
             data: updatedUser
         });
 
     } catch (error) {
-        console.error('Error in updateUser:', error);
+        console.error('Error en updateUser:', error);
         res.status(400).json({
             success: false,
-            message: "Error updating user",
-            error: error.message
+            message: error.message || "Error al actualizar usuario"
         });
     }
 };
